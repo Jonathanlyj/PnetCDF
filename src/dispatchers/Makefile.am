@@ -29,7 +29,8 @@ C_SRCS = lib_version.c \
          dimension.c \
          variable.c \
          attribute.c \
-         error_codes.c
+         error_codes.c\
+         baseline_ncx.c
 
 libdispatchers_la_SOURCES = $(C_SRCS)
 

@@ -17,6 +17,7 @@
 #include <unistd.h>     /* read(), close(), lseek() */
 #include <assert.h>     /* assert() */
 #include <errno.h>      /* errno */
+#include "baseline_ncx.h" 
 
 #ifdef ENABLE_THREAD_SAFE
 #include<pthread.h>
@@ -68,6 +69,82 @@ static int ncmpi_default_create_format = NC_FORMAT_CLASSIC;
         goto err_out;                                              \
     }                                                              \
 }
+
+/*Extract metadata and save it to new header struc*/
+
+static int baseline_extract_meta(void *ncdp,, struct hdr *file_info) {
+
+    int ncid, num_vars, num_dims, tot_num_dims, elem_sz, v_attrV_xsz;
+    int err = NC_NOERR;
+    MPI_Offset start, count;
+    
+    file_info->vars.ndefined = ncdp->vars.ndefined;
+    file_info->xsz = 0;
+    // Dimensions
+    file_info->dims.ndefined = ncdp->dims.ndefined;
+    file_info->dims.value = (hdr_dim **)malloc(rank * sizeof(hdr_dim *));
+    file_info->xsz += 2 * sizeof(uint32_t); // NC_Dimension and nelems
+
+    for (int i = 0; i < file_info->dims.ndefined; i++) {
+        hdr_dim *dim_info = (hdr_dim *)malloc(sizeof(hdr_dim));
+        dim_info->size = ncdp->dims.value[i]->size;
+        dim_info->name_len =  ncdp->dims.value[i]->name_len;
+        dim_info->name = (char *)malloc(dim_info->name_len + 1);
+        strcpy(dim_info->name, ncdp->dims.value[i]->name);
+        file_info->value[i] = dim_info;
+        file_info->xsz += sizeof(uint32_t) + sizeof(char) * dim_info->name_len; // dim name
+        file_info->xsz += sizeof(uint32_t); //size
+    }
+    // Variables
+    file_info->vars.ndefined = ncdp->vars.ndefined; 
+    file_info->vars.value = (hdr_var **)malloc(file_info->vars.ndefined * sizeof(hdr_var *));
+    file_info->xsz += 2 * sizeof(uint32_t); // NC_Variable and ndefined
+    for (int i = 0; i < file_info->vars.ndefined; i++) {
+       hdr_var *var_info = (hdr_var *)malloc(sizeof(hdr_var));
+       var_info->xtype = ncdp->vars.value[i]->xtype
+       var_info->name_len = ncdp->vars.value[i]->name_len;
+       var_info->name = (char *)malloc(var_info->name_len + 1);
+       var_info->ndims = ncdp->vars.value[i]->ndims;
+       var_info->dimids = (int *)malloc((i + 1) * sizeof(int));
+        for (int j = 0; j <=var_info->ndims; j++) {
+           var_info->dimids[j] = ncdp->vars.value[i]->dimids[j];
+        }
+        // file_info->vars.value[i] = var_info;
+        file_info->xsz += sizeof(uint32_t) + sizeof(char) *var_info->name_len; //var name
+        file_info->xsz += sizeof(uint32_t); //xtype
+        file_info->xsz += sizeof(uint32_t); //nelems of dim list
+        file_info->xsz += sizeof(uint32_t) *var_info->ndims; // dimid list
+
+        //Variable Attributes
+        var_info->attrs.ndefined = ncdp->vars.value[i].attrs.ndefined;
+        file_info->xsz += 2 * sizeof(uint32_t); // NC_Attribute and ndefine
+        var_info->attrs.value = (hdr_attr **)malloc(var_info->attrs.ndefined * sizeof(hdr_attr *));
+        for (int k = 0; k < ncdp->vars.value[i].attrs.ndefined; k++) {
+                    hdr_attr *attr_info = (hdr_attr *)malloc(sizeof(hdr_attr));
+                    attr_info->nelems = ncdp->vars.value[i]->attrs.value[k]->nelems;
+                    attr_info->xtype = ncdp->vars.value[i]->attrs.value[k] ->xtype; // Using NC_INT for simplicity
+                    attr_info->name_len = ncdp->vars.value[i]->attrs.value[k]->name_len;
+                    attr_info->name = (char *)malloc(attr_info->name_len + 1);
+                    strcpy(attr_info->name, ncdp->vars.value[i]->attrs.value[k]->name);
+                    attr_info->xvalue = ncdp->vars.value[i]->attrs.value[k]->xvalue;
+                    file_info->xsz += sizeof(uint32_t) + sizeof(char) * attr_info->name_len; //attr name
+                    file_info->xsz += sizeof(uint32_t); // nc_type
+                    file_info->xsz += sizeof(uint32_t); // nelems
+                    status = xlen_nc_type(attr_info->xtype, &v_attrV_xsz);
+                    file_info->xsz += attr_info->nelems * v_attrV_xsz;
+        
+                    var_info->attrs.value[k] = attr_info;
+            }
+        file_info->vars.value[i] = var_info;
+
+        }
+
+
+    return err;
+}
+
+
+
 
 /*----< new_id_PNCList() >---------------------------------------------------*/
 /* Return a new ID (array index) from the PNC list, pnc_filelist[] that is
@@ -929,6 +1006,15 @@ ncmpi_enddef(int ncid) {
         if (minE != NC_NOERR) return minE;
     }
     else if (err != NC_NOERR) return err; /* fatal error */
+
+    /* META: serilize local metadata to buffer*/
+    struct hdr local_hdr;
+    err = baseline_extract_meta(pncp->ncp, &local_hdr);
+    if (err != NC_NOERR) return err;
+
+    
+    
+
 
     /* calling the subroutine that implements ncmpi_enddef() */
     err = pncp->driver->enddef(pncp->ncp);
