@@ -272,6 +272,7 @@ ncmpio_NC_var_shape64(NC_var            *varp,
     if (varp->ndims == 0) goto out;
 
     /* determine shape[] of the variable */
+
     for (i=0; i<varp->ndims; i++) {
         /* For file create, varp->dimids[i] has been checked in ncmpi_def_var()
          * in dispatchers/variable.c. For file open, it has been checked in

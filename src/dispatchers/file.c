@@ -18,6 +18,7 @@
 #include <assert.h>     /* assert() */
 #include <errno.h>      /* errno */
 #include "baseline_ncx.h" 
+#include "../drivers/ncmpio/ncmpio_NC.h"
 
 #ifdef ENABLE_THREAD_SAFE
 #include<pthread.h>
@@ -70,44 +71,46 @@ static int ncmpi_default_create_format = NC_FORMAT_CLASSIC;
     }                                                              \
 }
 
-/*Extract metadata and save it to new header struc*/
+/*META: Extract metadata and save it to new header struc*/
 
-static int baseline_extract_meta(void *ncdp,, struct hdr *file_info) {
+static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
 
     int ncid, num_vars, num_dims, tot_num_dims, elem_sz, v_attrV_xsz;
     int err = NC_NOERR;
     MPI_Offset start, count;
+    NC *ncp = (NC*)ncdp;
     
-    file_info->vars.ndefined = ncdp->vars.ndefined;
+    file_info->vars.ndefined = ncp->vars.ndefined;
     file_info->xsz = 0;
     // Dimensions
-    file_info->dims.ndefined = ncdp->dims.ndefined;
-    file_info->dims.value = (hdr_dim **)malloc(rank * sizeof(hdr_dim *));
+    file_info->dims.ndefined = ncp->dims.ndefined;
+    file_info->dims.value = (hdr_dim **)NCI_Malloc(file_info->dims.ndefined * sizeof(hdr_dim *));
     file_info->xsz += 2 * sizeof(uint32_t); // NC_Dimension and nelems
 
     for (int i = 0; i < file_info->dims.ndefined; i++) {
-        hdr_dim *dim_info = (hdr_dim *)malloc(sizeof(hdr_dim));
-        dim_info->size = ncdp->dims.value[i]->size;
-        dim_info->name_len =  ncdp->dims.value[i]->name_len;
-        dim_info->name = (char *)malloc(dim_info->name_len + 1);
-        strcpy(dim_info->name, ncdp->dims.value[i]->name);
-        file_info->value[i] = dim_info;
+        hdr_dim *dim_info = (hdr_dim *)NCI_Malloc(sizeof(hdr_dim));
+        dim_info->size = ncp->dims.value[i]->size;
+        dim_info->name_len =  ncp->dims.value[i]->name_len;
+        dim_info->name = (char *)NCI_Malloc(dim_info->name_len + 1);
+        strcpy(dim_info->name, ncp->dims.value[i]->name);
+        file_info->dims.value[i] = dim_info;
         file_info->xsz += sizeof(uint32_t) + sizeof(char) * dim_info->name_len; // dim name
         file_info->xsz += sizeof(uint32_t); //size
     }
     // Variables
-    file_info->vars.ndefined = ncdp->vars.ndefined; 
-    file_info->vars.value = (hdr_var **)malloc(file_info->vars.ndefined * sizeof(hdr_var *));
+    file_info->vars.ndefined = ncp->vars.ndefined; 
+    file_info->vars.value = (hdr_var **)NCI_Malloc(file_info->vars.ndefined * sizeof(hdr_var *));
     file_info->xsz += 2 * sizeof(uint32_t); // NC_Variable and ndefined
     for (int i = 0; i < file_info->vars.ndefined; i++) {
-       hdr_var *var_info = (hdr_var *)malloc(sizeof(hdr_var));
-       var_info->xtype = ncdp->vars.value[i]->xtype
-       var_info->name_len = ncdp->vars.value[i]->name_len;
-       var_info->name = (char *)malloc(var_info->name_len + 1);
-       var_info->ndims = ncdp->vars.value[i]->ndims;
-       var_info->dimids = (int *)malloc((i + 1) * sizeof(int));
+       hdr_var *var_info = (hdr_var *)NCI_Malloc(sizeof(hdr_var));
+       var_info->xtype = ncp->vars.value[i]->xtype;
+       var_info->name_len = ncp->vars.value[i]->name_len;
+       var_info->name = (char *)NCI_Malloc(var_info->name_len + 1);
+       strcpy(var_info->name, ncp->vars.value[i]->name);
+       var_info->ndims = ncp->vars.value[i]->ndims;
+       var_info->dimids = (int *)NCI_Malloc((i + 1) * sizeof(int));
         for (int j = 0; j <=var_info->ndims; j++) {
-           var_info->dimids[j] = ncdp->vars.value[i]->dimids[j];
+           var_info->dimids[j] = ncp->vars.value[i]->dimids[j];
         }
         // file_info->vars.value[i] = var_info;
         file_info->xsz += sizeof(uint32_t) + sizeof(char) *var_info->name_len; //var name
@@ -116,21 +119,25 @@ static int baseline_extract_meta(void *ncdp,, struct hdr *file_info) {
         file_info->xsz += sizeof(uint32_t) *var_info->ndims; // dimid list
 
         //Variable Attributes
-        var_info->attrs.ndefined = ncdp->vars.value[i].attrs.ndefined;
+        var_info->attrs.ndefined = ncp->vars.value[i]->attrs.ndefined;
         file_info->xsz += 2 * sizeof(uint32_t); // NC_Attribute and ndefine
-        var_info->attrs.value = (hdr_attr **)malloc(var_info->attrs.ndefined * sizeof(hdr_attr *));
-        for (int k = 0; k < ncdp->vars.value[i].attrs.ndefined; k++) {
-                    hdr_attr *attr_info = (hdr_attr *)malloc(sizeof(hdr_attr));
-                    attr_info->nelems = ncdp->vars.value[i]->attrs.value[k]->nelems;
-                    attr_info->xtype = ncdp->vars.value[i]->attrs.value[k] ->xtype; // Using NC_INT for simplicity
-                    attr_info->name_len = ncdp->vars.value[i]->attrs.value[k]->name_len;
-                    attr_info->name = (char *)malloc(attr_info->name_len + 1);
-                    strcpy(attr_info->name, ncdp->vars.value[i]->attrs.value[k]->name);
-                    attr_info->xvalue = ncdp->vars.value[i]->attrs.value[k]->xvalue;
+        var_info->attrs.value = (hdr_attr **)NCI_Malloc(var_info->attrs.ndefined * sizeof(hdr_attr *));
+        for (int k = 0; k < ncp->vars.value[i]->attrs.ndefined; k++) {
+    
+                    hdr_attr *attr_info = (hdr_attr *)NCI_Malloc(sizeof(hdr_attr));
+                    attr_info->nelems = ncp->vars.value[i]->attrs.value[k]->nelems;
+                    attr_info->xtype = ncp->vars.value[i]->attrs.value[k] ->xtype; // Using NC_INT for simplicity
+                    attr_info->name_len = ncp->vars.value[i]->attrs.value[k]->name_len;
+                    attr_info->name = (char *)NCI_Malloc(attr_info->name_len + 1);
+                    strcpy(attr_info->name, ncp->vars.value[i]->attrs.value[k]->name);
+                    // ncmpii_xlen_nc_type(attr_info->xtype, &v_attrV_xsz);
+                    // int nbytes = attr_info->nelems * v_attrV_xsz;
+                    // memcpy(attr_info->xvalue, ncp->vars.value[i]->attrs.value[k]->xvalue, nbytes);
+                    attr_info->xvalue = ncp->vars.value[i]->attrs.value[k]->xvalue;
                     file_info->xsz += sizeof(uint32_t) + sizeof(char) * attr_info->name_len; //attr name
                     file_info->xsz += sizeof(uint32_t); // nc_type
                     file_info->xsz += sizeof(uint32_t); // nelems
-                    status = xlen_nc_type(attr_info->xtype, &v_attrV_xsz);
+                    err = xlen_nc_type(attr_info->xtype, &v_attrV_xsz);
                     file_info->xsz += attr_info->nelems * v_attrV_xsz;
         
                     var_info->attrs.value[k] = attr_info;
@@ -141,6 +148,184 @@ static int baseline_extract_meta(void *ncdp,, struct hdr *file_info) {
 
 
     return err;
+}
+/*META: Add metadata to header object*/
+static int add_hdr(struct hdr *hdr_data, PNC* pncp){
+    // NC_dimarray* ncdims, NC_vararray* ncvars
+    NC *ncp = pncp->ncp;
+    //add dimensions 
+    int ndims= hdr_data->dims.ndefined;
+    int cum_ndims = ncp->dims.ndefined;
+    
+    int i,j,k,nerrs=0;
+    MPI_Offset len;
+    int  dimid,err;
+    size_t alloc_size;
+    int *new_dimids = (int*)NCI_Malloc(sizeof(int) * ndims);
+    // check if total number of dimensions exceed max number allowed
+    int tmp = cum_ndims + ndims;
+    if (tmp > NC_MAX_DIMS) DEBUG_RETURN_ERROR(NC_EMAXDIMS)
+    //expand dimarray size
+    int extra_chunk =  _RNDUP(tmp, NC_ARRAY_GROWBY) - _RNDUP(cum_ndims, NC_ARRAY_GROWBY);
+    if (extra_chunk > 0) {
+        size_t alloc_size = (size_t)ncp->dims.ndefined + NC_ARRAY_GROWBY * extra_chunk;
+        ncp->dims.value = (NC_dim **) NCI_Realloc(ncp->dims.value,
+                                      alloc_size * sizeof(NC_dim*));
+        if (ncp->dims.value == NULL)
+            DEBUG_RETURN_ERROR(NC_ENOMEM)
+    }
+    //store dims
+     for (i=0; i<ndims; i++){
+        /* check if the name string is previously used */
+        err = pncp->driver->inq_dimid(ncp, hdr_data->dims.value[i]->name, &dimid);
+        if (err != NC_EBADDIM) {
+            // DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
+            // goto err_check;
+            err = pncp->driver->inq_dim(ncp, dimid, hdr_data->dims.value[i]->name, &len);
+            if (err == NC_NOERR && len != hdr_data->dims.value[i]->size){
+                DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_DIM_NAME)
+                goto err_check;
+            } else{
+                new_dimids[i]=dimid;
+            }
+
+        }else{
+        /* not existed, create new one*/
+        char *nname=NULL;  /* normalized name */
+        NC_dim *dimp=NULL;
+        /* create a normalized character string */
+        err = ncmpii_utf8_normalize(hdr_data->dims.value[i]->name, &nname);
+        if (err != NC_NOERR) return err;
+
+        /* create a new dimension object (dimp->name points to nname) */
+        dimp = (NC_dim*) NCI_Malloc(sizeof(NC_dim));
+        if (dimp == NULL) {
+            NCI_Free(nname);
+            DEBUG_RETURN_ERROR(NC_ENOMEM)
+        }
+        dimp->size     = hdr_data->dims.value[i]->size;
+        dimp->name     = nname;
+        dimp->name_len = strlen(nname);
+
+        dimid = ncp->dims.ndefined;
+        /* Add a new dim handle to the end of handle array */
+        ncp->dims.value[dimid] = dimp;
+        //TODO: check unlimited id conflicts
+        if (dimp->size == NC_UNLIMITED) ncp->dims.unlimited_id = dimid;
+        ncp->dims.ndefined++;
+        new_dimids[i]=dimid;
+        }
+    }
+    //add variables
+    int nvars = hdr_data->vars.ndefined;
+    int cum_nvars = ncp->vars.ndefined;
+    // int *varid = (int *)malloc(nvars * sizeof(int));
+    int v_ndims, v_namelen, xtype, n_att, varid;
+    int *v_dimids;
+    tmp = nvars + cum_nvars;
+    extra_chunk =  _RNDUP(tmp, NC_ARRAY_GROWBY) - _RNDUP(cum_nvars, NC_ARRAY_GROWBY);
+
+    if (extra_chunk > 0){
+        size_t alloc_size = (size_t)ncp->vars.ndefined + NC_ARRAY_GROWBY * extra_chunk;
+        ncp->vars.value = (NC_var **) NCI_Realloc(ncp->vars.value, alloc_size * sizeof(NC_var*));
+        if (ncp->vars.value == NULL)
+            DEBUG_RETURN_ERROR(NC_ENOMEM)
+    }
+    // printf("\nnvars: %d", nvars);
+    for (i=0; i<nvars; i++){
+        v_namelen = hdr_data->vars.value[i]->name_len;
+        xtype = hdr_data->vars.value[i]->xtype;
+        v_ndims = hdr_data->vars.value[i]->ndims;
+
+        err = pncp->driver->inq_varid(pncp->ncp, hdr_data->vars.value[i]->name, &varid);
+        if (err != NC_ENOTVAR) {
+            //Disable shared variable across processes for now
+            //TODO: store this varid here in the mapping
+            DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
+            goto err_check;
+
+        }else{
+        char *nname=NULL;  /* normalized name */
+        NC_var *varp=NULL;
+
+        v_dimids = (int *)NCI_Malloc(v_ndims * sizeof(int));
+        for(j=0; j<v_ndims; j++) v_dimids[j] = new_dimids[hdr_data->vars.value[i]->dimids[j]];
+    
+        /* create a normalized character string */
+        err = ncmpii_utf8_normalize(hdr_data->vars.value[i]->name, &nname);
+        if (err != NC_NOERR) goto err_check;
+
+        /* allocate a new NC_var object */
+        varp = ncmpio_new_NC_var(nname, strlen(nname), v_ndims);
+
+   
+        varp->xtype = xtype;
+        ncmpii_xlen_nc_type(xtype, &varp->xsz);
+        /* copy dimids[] */
+        if (v_ndims != 0 && v_dimids != NULL)
+            memcpy(varp->dimids, v_dimids, (size_t)v_ndims * SIZEOF_INT);
+        /* set up array dimensional structures */
+        err = ncmpio_NC_var_shape64(varp, &ncp->dims);
+        if (err != NC_NOERR) {
+            ncmpio_free_NC_var(varp);
+            nname = NULL; /* already freed in ncmpio_free_NC_var() */
+            goto err_check;
+        }
+        /* Add a new dim handle to the end of handle array */
+
+        varp->varid = ncp->vars.ndefined;
+        ncp->vars.value[ncp->vars.ndefined] = varp;
+        ncp->vars.ndefined++;
+        /* default is NOFILL */
+        varp->no_fill = 1;
+
+        /* change to FILL only if the entire dataset fill mode is FILL */
+        if (NC_dofill(ncp)) varp->no_fill = 0;
+   
+        // Add variable attributes
+        int att_namelen, att_xtype, att_nelems,v_attr_xsz, nbytes;
+        int nattrs = hdr_data->vars.value[i]->attrs.ndefined;
+        int att_vid = varp->varid;
+        printf("\nvariable %d: nattrs: %d", i, nattrs);
+        // int *varid = (int *)malloc(nattrs * sizeof(int));
+        ncp->vars.value[att_vid]->attrs.ndefined = nattrs;
+        alloc_size = _RNDUP(nattrs, NC_ARRAY_GROWBY);
+        ncp->vars.value[att_vid]->attrs.value = (NC_attr**) NCI_Calloc(alloc_size, sizeof(NC_attr*));
+        if (ncp->vars.value[att_vid]->attrs.value == NULL) DEBUG_RETURN_ERROR(NC_ENOMEM)
+        for(k=0; k<nattrs; k++){
+            NC_attr *attrp=NULL;
+            att_namelen = hdr_data->vars.value[i]->attrs.value[k]->name_len;
+            att_xtype = hdr_data->vars.value[i]->attrs.value[k]->xtype;
+            att_nelems = hdr_data->vars.value[i]->attrs.value[k]->nelems;
+            
+            /* create a normalized character string */
+            err = ncmpii_utf8_normalize(hdr_data->vars.value[i]->attrs.value[k]->name, &nname);
+            if (err != NC_NOERR) goto err_check;
+            err = ncmpio_new_NC_attr(nname, att_namelen, att_xtype, att_nelems, &attrp);
+
+            if (err != NC_NOERR) {
+                NCI_Free(nname);
+                return err;
+            }
+            ncmpii_xlen_nc_type(att_xtype, &v_attr_xsz);
+            nbytes = attrp->nelems * v_attr_xsz;
+            memcpy(attrp->xvalue, hdr_data->vars.value[i]->attrs.value[k]->xvalue, nbytes);
+            ncp->vars.value[att_vid]->attrs.value[k] = attrp;
+        }
+
+        NCI_Free(v_dimids);
+        }
+
+        // err = ncmpi_def_var(ncid, hdr_data->vars.value[i]->name, xtype, v_ndims,  v_dimids, &varid[i]); ERR
+        // n_att = hdr_data->vars.value[i]->attrs.ndefined;
+        // // printf("\nn_att: %d\n", n_att);
+
+       
+    }
+    NCI_Free(new_dimids);
+err_check:
+    if (err != NC_NOERR) return err;
+    return nerrs;
 }
 
 
@@ -1007,10 +1192,99 @@ ncmpi_enddef(int ncid) {
     }
     else if (err != NC_NOERR) return err; /* fatal error */
 
-    /* META: serilize local metadata to buffer*/
+    /* ---------------------------------------------- META: serilize local metadata to buffer----------------------------------------------*/
     struct hdr local_hdr;
     err = baseline_extract_meta(pncp->ncp, &local_hdr);
+    // printf("%s\n", local_hdr.dims.value[0]->name);
+    int rank, size;
+    MPI_Comm_rank(pncp->comm, &rank);
+    MPI_Comm_size(pncp->comm, &size);
+    if (rank > 1){
+    for (int i = 0; i < local_hdr.dims.ndefined; i++) {
+        printf("rank %d:  Name: %s, Size: %lld\n", rank,  local_hdr.dims.value[i]->name, local_hdr.dims.value[i]->size);
+    }
+
+    printf("    Variales:\n");
+    for (int i = 0; i < local_hdr.vars.ndefined; i++) {
+        printf("rank %d;  Name: %s, Type: %d, NumDims: %d\n", rank, local_hdr.vars.value[i]->name,  local_hdr.vars.value[i]->xtype, 
+        local_hdr.vars.value[i]->ndims);
+        printf("    Dim IDs: ");
+        for (int j = 0; j < local_hdr.vars.value[i]->ndims; j++) {
+            printf("%d ", local_hdr.vars.value[i]->dimids[j]);
+        }
+        printf("\n");
+        printf("    Attributes:\n");
+        for (int k = 0; k < local_hdr.vars.value[i]->attrs.ndefined; k++) {
+            printf("      Name: %s, Nelems: %lld, Type: %d\n", local_hdr.vars.value[i]->attrs.value[k]->name, 
+            local_hdr.vars.value[i]->attrs.value[k]->nelems, local_hdr.vars.value[i]->attrs.value[k]->xtype);
+        }
+    }
+    }
+    char* send_buffer = (char*) NCI_Malloc(local_hdr.xsz);
+    err = serialize_hdr(&local_hdr, send_buffer);
+    /* ---------------------------------------------- META: Communicate metadata size----------------------------------------------*/
+
+  // Phase 1: Communicate the sizes of the header structure for each process
+    MPI_Offset* all_collection_sizes = (MPI_Offset*) NCI_Malloc(size * sizeof(MPI_Offset));
+    int mpireturn;
+    TRACE_COMM(MPI_Allgather)(&local_hdr.xsz, 1, MPI_OFFSET, all_collection_sizes, 1, MPI_OFFSET, pncp->comm);
+    
+    /* ---------------------------------------------- META: Communicate metadata ----------------------------------------------*/
+    // Calculate displacements for the second phase
+    int* recv_displs = (int*) NCI_Malloc(size * sizeof(int));
+    int total_recv_size = all_collection_sizes[0];
+    recv_displs[0] = 0;
+    for (int i = 1; i < size; ++i) {
+        recv_displs[i] = recv_displs[i - 1] + all_collection_sizes[i - 1];
+        total_recv_size += all_collection_sizes[i];
+        
+    }
+    char* all_collections_buffer = (char*) NCI_Malloc(total_recv_size);
+
+    int* recvcounts =  (int*)NCI_Malloc(size * sizeof(int));
+    for (int i = 0; i < size; ++i) {
+        recvcounts[i] = (int)all_collection_sizes[i];
+    }
+    // Phase 2: Communicate the actual header data
+    // Before MPI_Allgatherv
+    TRACE_COMM(MPI_Allgatherv)(send_buffer, local_hdr.xsz, MPI_BYTE, all_collections_buffer, recvcounts, recv_displs, MPI_BYTE, pncp->comm);
+
+  /* ---------------------------------------------- META: Deseralize metadata ----------------------------------------------*/
     if (err != NC_NOERR) return err;
+        /* allocate buffer for header object NC */
+    // NC_dimarray *ncdims = (NC_dimarray*) NCI_Calloc(1, sizeof(NC_dimarray));
+    // NC_vararray *ncvars = (NC_vararray*) NCI_Calloc(1, sizeof(NC_vararray));
+    // ncdims->ndefined = 0;
+    // ncdims->unlimited_id = -1;
+    // ncvars->ndefined = 0;
+    //Duplicate old header dim array here
+    NC *ncp = pncp->ncp;
+    ncmpio_free_NC_dimarray(&ncp->dims);
+    ncmpio_free_NC_vararray(&ncp->vars);
+    // pncp->ncp->dims = *ncdims;
+    // pncp->ncp->vars = *ncvars;
+    
+    for (int i = 0; i < size; ++i) {
+        struct hdr recv_hdr;
+        // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
+        deserialize_hdr(&recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
+        add_hdr(&recv_hdr, pncp);
+
+
+    }
+
+    #ifndef SEARCH_NAME_LINEARLY
+        /* initialize and populate name lookup tables ---------------------------*/
+        ncmpio_hash_table_populate_NC_dim(&ncp->dims);
+        ncmpio_hash_table_populate_NC_var(&ncp->vars);
+
+    #endif
+    NCI_Free(all_collections_buffer);
+    NCI_Free(send_buffer);
+    NCI_Free(all_collection_sizes);
+
+    
+    
 
     
     

@@ -7,7 +7,7 @@
 #include <mpi.h>
 #include <pnetcdf.h>
 #include "baseline_ncx.h" 
-
+#include "../drivers/ncmpio/ncmpio_NC.h"
 
   /* ---------------------------------- Serializaition ----------------------------------------*/
 
