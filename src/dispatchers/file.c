@@ -18,6 +18,7 @@
 #include <assert.h>     /* assert() */
 #include <errno.h>      /* errno */
 
+
 #ifdef ENABLE_THREAD_SAFE
 #include<pthread.h>
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
@@ -31,7 +32,7 @@ static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 #include <dispatch.h>
 #include <pnc_debug.h>
 #include <common.h>
-
+#include <mpi.h>
 #ifdef ENABLE_ADIOS
 #include "adios_read.h"
 #include <arpa/inet.h>
@@ -886,6 +887,7 @@ ncmpi_close(int ncid)
     err = PNC_check_id(ncid, &pncp);
     if (err != NC_NOERR) return err;
 
+    pncp->driver->display_count();
     /* calling the subroutine that implements ncmpi_close() */
     err = pncp->driver->close(pncp->ncp);
 
@@ -913,7 +915,10 @@ int
 ncmpi_enddef(int ncid) {
     int err=NC_NOERR;
     PNC *pncp;
-
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    /*----------------------------------------< Timer9 start >----------------------------------------------------*/
+    double start_time9 = MPI_Wtime();
     /* check if ncid is valid */
     err = PNC_check_id(ncid, &pncp);
     if (err != NC_NOERR) return err;
@@ -936,7 +941,11 @@ ncmpi_enddef(int ncid) {
 
     fClr(pncp->flag, NC_MODE_INDEP); /* default enters collective data mode */
     fClr(pncp->flag, NC_MODE_DEF);
+    /*----------------------------------------< Timer9 end >----------------------------------------------------*/
+    double end_time9 = MPI_Wtime();
+    //printf("\nrank: %d: timer9: %f", rank, end_time9 - start_time9);
     return NC_NOERR;
+
 }
 
 /*----< ncmpi__enddef() >----------------------------------------------------*/
@@ -1008,6 +1017,7 @@ err_check:
     fClr(pncp->flag, NC_MODE_INDEP); /* default enters collective data mode */
     fClr(pncp->flag, NC_MODE_DEF);
     return NC_NOERR;
+
 }
 
 /*----< ncmpi_redef() >------------------------------------------------------*/

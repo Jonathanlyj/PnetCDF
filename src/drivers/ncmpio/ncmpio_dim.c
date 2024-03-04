@@ -32,6 +32,9 @@
 #include "ncmpio_NC.h"
 #include <ncx.h>
 
+int name_check_count = 0;
+int max_list_lenth = 0;
+
 /*----< dup_NC_dim() >-------------------------------------------------------*/
 static int
 dup_NC_dim(const NC_dim *rdimp, NC_dim **dimp)
@@ -89,14 +92,18 @@ NC_finddim(const NC_dimarray *ncap,
 {
     int i, key, dimid;
     size_t nchars;
-
+    name_check_count++;
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if (ncap->ndefined == 0) return NC_EBADDIM;
 
     /* hash the dim name into a key for name lookup */
-    key = HASH_FUNC(name);
+    key = HASH_FUNC(name); 
 
     /* check the list using linear search */
     nchars = strlen(name);
+    /*----------------------------------------< Timer1 start >----------------------------------------------------*/
+    double start_time1 = MPI_Wtime();
     for (i=0; i<ncap->nameT[key].num; i++) {
         dimid = ncap->nameT[key].list[i];
         if (ncap->value[dimid]->name_len == nchars &&
@@ -105,9 +112,17 @@ NC_finddim(const NC_dimarray *ncap,
             return NC_NOERR; /* the name already exists */
         }
     }
+    max_list_lenth = ncap->nameT[key].num;
+    /*----------------------------------------< Timer1 end >----------------------------------------------------*/
+    double end_time1 = MPI_Wtime();
+    //printf("\nrank: %d: timer1: %f", rank, end_time1 - start_time1);
     return NC_EBADDIM; /* the name has never been used */
 }
 #endif
+
+void ncmpio_display_count(){
+    printf("\n finddim executed %d times, max length %d dims", name_check_count, max_list_lenth);
+}
 
 /* dimarray */
 
@@ -192,6 +207,11 @@ ncmpio_def_dim(void       *ncdp,    /* IN:  NC object */
                MPI_Offset  size,    /* IN:  dimension size */
                int        *dimidp)  /* OUT: dimension ID */
 {
+
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    /*----------------------------------------< Timer2 start >----------------------------------------------------*/
+    double start_time2 = MPI_Wtime();
     int dimid, err=NC_NOERR;
     char *nname=NULL;  /* normalized name */
     NC *ncp=(NC*)ncdp;
@@ -232,6 +252,9 @@ ncmpio_def_dim(void       *ncdp,    /* IN:  NC object */
     if (size == NC_UNLIMITED) ncp->dims.unlimited_id = dimid;
 
     ncp->dims.ndefined++;
+    /*----------------------------------------< Timer2 end >----------------------------------------------------*/
+    double end_time2 = MPI_Wtime();
+    //printf("\nrank: %d: timer2: %f", rank, end_time2 - start_time2);
 
 #ifndef SEARCH_NAME_LINEARLY
     ncmpio_hash_insert(ncp->dims.nameT, nname, dimid);
@@ -239,6 +262,9 @@ ncmpio_def_dim(void       *ncdp,    /* IN:  NC object */
 
     if (dimidp != NULL) *dimidp = dimid;
 
+    /*----------------------------------------< Timer3 end >----------------------------------------------------*/
+    double end_time3 = MPI_Wtime();
+    //printf("\nrank: %d: timer3: %f", rank, end_time3 - end_time2);
     return err;
 }
 

@@ -67,6 +67,7 @@ struct PNC_driver {
     int (*inq_dimid)(void*,const char*,int*);
     int (*inq_dim)(void*,int,char*,MPI_Offset*);
     int (*rename_dim)(void*, int, const char*);
+    void (*display_count)();
 
     /* APIs read/write attributes */
     int (*inq_att)(void*,int,const char*,nc_type*,MPI_Offset*);

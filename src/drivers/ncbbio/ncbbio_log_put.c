@@ -125,7 +125,7 @@ int ncbbio_log_put_var(NC_bb            *ncbbp,
         int name_len;
         char type_name[MPI_MAX_OBJECT_NAME];
         MPI_Type_get_name(buftype, type_name, &name_len);
-        fprintf(stderr, "Rank: %d, Unrecognized buftype %s\n", ncbbp->rank,
+        fprintf(stderr, "\nrank: %d, Unrecognized buftype %s\n", ncbbp->rank,
                 type_name);
         fflush(stderr);
 #endif
@@ -303,7 +303,7 @@ int ncbbio_log_put_varn(NC_bb            *ncbbp,
         int name_len;
         char type_name[MPI_MAX_OBJECT_NAME];
         MPI_Type_get_name(buftype, type_name, &name_len);
-        fprintf(stderr, "Rank: %d, Unrecognized buftype %s\n", ncbbp->rank,
+        fprintf(stderr, "\nrank: %d, Unrecognized buftype %s\n", ncbbp->rank,
                 type_name);
         fflush(stderr);
 #endif

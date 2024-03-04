@@ -11,11 +11,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-
+#include <mpi.h>
 #include <pnetcdf.h>
 #include <dispatch.h>
 #include <pnc_debug.h>
 #include <common.h>
+
+
+
+
+
 
 /*----< ncmpi_def_dim() >----------------------------------------------------*/
 /* This is a collective subroutine. */
@@ -27,7 +32,10 @@ ncmpi_def_dim(int         ncid,    /* IN:  file ID */
 {
     int err=NC_NOERR, dimid;
     PNC *pncp;
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+    
     /* check if ncid is valid */
     err = PNC_check_id(ncid, &pncp);
     if (err != NC_NOERR) return err;
@@ -48,6 +56,7 @@ ncmpi_def_dim(int         ncid,    /* IN:  file ID */
     }
 
     /* check if the name string is legal for the netcdf format */
+
     err = ncmpii_check_name(name, pncp->format);
     if (err != NC_NOERR) {
         DEBUG_TRACE_ERROR(err)
@@ -93,9 +102,13 @@ ncmpi_def_dim(int         ncid,    /* IN:  file ID */
         DEBUG_ASSIGN_ERROR(err, NC_EMAXDIMS)
         goto err_check;
     }
-
+// /*----------------------------------------< Timer1 start >----------------------------------------------------*/
+// double start_time1 = MPI_Wtime();
     /* check if the name string is previously used */
     err = pncp->driver->inq_dimid(pncp->ncp, name, NULL);
+// /*----------------------------------------< Timer1 end >----------------------------------------------------*/
+//     double end_time1 = MPI_Wtime();
+//     //printf("\nrank: %d: timer1: %f", rank, end_time1 - start_time1);
     if (err != NC_EBADDIM) {
         DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
         goto err_check;
@@ -154,7 +167,11 @@ err_check:
     if (err != NC_NOERR) return err;
 
     /* calling the subroutine that implements ncmpi_def_dim() */
+
+
     err = pncp->driver->def_dim(pncp->ncp, name, size, &dimid);
+/*----------------------------------------< Timer4 start >----------------------------------------------------*/
+    double start_time4 = MPI_Wtime();
     if (err != NC_NOERR) return err;
 
     if (size == NC_UNLIMITED && pncp->unlimdimid == -1)
@@ -163,7 +180,9 @@ err_check:
     pncp->ndims++;
 
     if (dimidp != NULL) *dimidp = dimid;
-
+/*----------------------------------------< Timer4 end >----------------------------------------------------*/
+    double end_time4 = MPI_Wtime();
+    //printf("\nrank: %d: timer4: %f", rank, end_time4 - start_time4);
     return NC_NOERR;
 }
 

@@ -35,6 +35,7 @@ static PNC_driver ncmpio_driver = {
     ncmpio_inq_dimid,
     ncmpio_inq_dim,
     ncmpio_rename_dim,
+    ncmpio_display_count,
 
     /* ATTRIBUTE APIs */
     ncmpio_inq_att,

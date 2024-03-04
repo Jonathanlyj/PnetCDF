@@ -107,6 +107,7 @@ ncmpii_error_adios2nc(int adios_err, char *err_msg);
 extern int
 ncmpii_check_name(const char *name, int file_ver);
 
+
 extern MPI_Datatype
 ncmpii_nc2mpitype(nc_type xtype);
 

@@ -27,6 +27,9 @@
 /* Use semi-relaxed check */
 #define UTF8_CHECK 2
 
+
+
+
 static int
 nextUTF8(const char* cp)
 {
@@ -252,6 +255,7 @@ ncmpii_check_name(const char *name,
      * OFFSET (i.e. 32-bit vs. 64-bit integer. Both formats support extended
      * names now.
      */
+
 #ifdef _CONFORM_NETCDF_3_5_1
     if (file_ver == NC_FORMAT_CLASSIC)
         return check_name_CDF1(name);

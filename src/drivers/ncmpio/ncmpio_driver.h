@@ -70,6 +70,9 @@ ncmpio_def_dim(void *ncdp, const char *name, MPI_Offset size, int *dimidp);
 extern int
 ncmpio_inq_dimid(void *ncdp, const char *name, int *dimidp);
 
+extern
+void ncmpio_display_count();
+
 extern int
 ncmpio_inq_dim(void *ncdp, int dimid, char *name, MPI_Offset *lengthp);
 

@@ -114,7 +114,7 @@ int main(int argc, char *argv[]) {
     printf("Format:\t\t\t\t\t\t%.8s\n", Header->format);
     printf("File name:\t\t\t\t\t%s\n", Header->basename);
     printf("Number of processes:\t\t%lld\n", Header->num_ranks);
-    printf("Rank:\t\t\t\t\t\t%lld\n", Header->rank_id);
+    //printf("\nrank:\t\t\t\t\t\t%lld\n", Header->rank_id);
     if (Header->big_endian){
         printf("Endianness:\t\t\t\t\tbig endian\n");
     }

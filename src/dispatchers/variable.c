@@ -12,7 +12,7 @@
 #include <string.h>
 #include <assert.h>
 #include <limits.h> /* INT_MAX */
-
+#include <mpi.h>
 #include <pnetcdf.h>
 #include <dispatch.h>
 #include <pnc_debug.h>
@@ -30,6 +30,10 @@ ncmpi_def_var(int         ncid,    /* IN:  file ID */
 {
     int i, err;
     PNC *pncp;
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    /*----------------------------------------< Timer5 start >----------------------------------------------------*/
+    double start_time5 = MPI_Wtime();
 
     /* check if ncid is valid */
     err = PNC_check_id(ncid, &pncp);
@@ -201,9 +205,14 @@ err_check:
     if (err != NC_NOERR) return err;
 
     /* calling the subroutine that implements ncmpi_def_var() */
+
+/*----------------------------------------< Timer5 end >----------------------------------------------------*/
+    double end_time5 = MPI_Wtime();
+    //printf("\nrank: %d: timer5: %f", rank, end_time5 - start_time5);
     err = pncp->driver->def_var(pncp->ncp, name, type, ndims, dimids, varidp);
     if (err != NC_NOERR) return err;
-
+/*----------------------------------------< Timer8 start >----------------------------------------------------*/
+    double start_time8 = MPI_Wtime();
     assert(*varidp == pncp->nvars);
 
     /* add new variable into pnc-vars[] */
@@ -231,7 +240,9 @@ err_check:
         }
     }
     pncp->nvars++;
-
+/*----------------------------------------< Timer8 end >----------------------------------------------------*/
+    double end_time8 = MPI_Wtime();
+    //printf("\nrank: %d: timer8: %f", rank, end_time8 - start_time8);
     return NC_NOERR;
 }
 

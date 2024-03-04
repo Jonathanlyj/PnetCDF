@@ -344,6 +344,11 @@ ncmpio_def_var(void       *ncdp,
                const int  *dimids,
                int        *varidp)
 {
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+/*----------------------------------------< Timer6 start >----------------------------------------------------*/
+    double start_time6 = MPI_Wtime();
+
     int err=NC_NOERR;
     char *nname=NULL; /* normalized name */
     NC *ncp=(NC*)ncdp;
@@ -417,7 +422,11 @@ err_check:
     }
 
     assert(nname != NULL);
+/*----------------------------------------< Timer6 end >----------------------------------------------------*/
 
+    double end_time6 = MPI_Wtime();
+    //printf("\nrank: %d: timer6: %f", rank, end_time6 - start_time6);
+/*----------------------------------------< Timer7 stsart >----------------------------------------------------*/
 #ifndef SEARCH_NAME_LINEARLY
     /* insert nname to the lookup table */
     ncmpio_hash_insert(ncp->vars.nameT, nname, varp->varid);
@@ -430,7 +439,10 @@ err_check:
 
     /* change to FILL only if the entire dataset fill mode is FILL */
     if (NC_dofill(ncp)) varp->no_fill = 0;
+/*----------------------------------------< Timer7 end >----------------------------------------------------*/
 
+    double end_time7 = MPI_Wtime();
+    //printf("\nrank: %d: timer7: %f", rank, end_time7 - end_time6);
     return NC_NOERR;
 }
 
