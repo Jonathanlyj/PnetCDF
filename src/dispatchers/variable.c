@@ -17,6 +17,7 @@
 #include <dispatch.h>
 #include <pnc_debug.h>
 #include <common.h>
+#include "../drivers/ncmpio/ncmpio_NC.h"
 
 /*----< ncmpi_def_var() >----------------------------------------------------*/
 /* this API is collective, and must be called in define mode */
@@ -30,6 +31,9 @@ ncmpi_def_var(int         ncid,    /* IN:  file ID */
 {
     int i, err;
     PNC *pncp;
+    
+
+    int* index_ids = NCI_Malloc(ndims * SIZEOF_INT);
 
     /* check if ncid is valid */
     err = PNC_check_id(ncid, &pncp);
@@ -113,14 +117,16 @@ ncmpi_def_var(int         ncid,    /* IN:  file ID */
     }
     else
         err = NC_NOERR;
-
+    NC *ncp=(NC*)pncp->ncp;
+    /*META: convert to dimids(index)*/
+    for(int i=0; i< ndims; i++) index_ids[i] = ncp->dims.indexes[dimids[i]];
     /* check dimids[] */
-    if (ndims > 0 && dimids == NULL) { /* for non-scalar variable */
+    if (ndims > 0 && index_ids == NULL) { /* for non-scalar variable */
         DEBUG_ASSIGN_ERROR(err, NC_EINVAL)
         goto err_check;
     }
     for (i=0; i<ndims; i++) {
-        if (dimids[i] < 0 || pncp->ndims == 0 || dimids[i] >= pncp->ndims) {
+        if (index_ids[i] < 0 || pncp->ndims == 0 || index_ids[i] >= pncp->ndims) {
             DEBUG_ASSIGN_ERROR(err, NC_EBADDIM)
             goto err_check;
         }
@@ -173,11 +179,11 @@ err_check:
         if (err == NC_NOERR && root_ndims != ndims)
             DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_VAR_NDIMS)
 
-        /* check if dimids is consistent among all processes */
+        /* check if index_ids is consistent among all processes */
         if (root_ndims > 0) {
             int *root_dimids = (int*)NCI_Malloc((size_t)root_ndims *SIZEOF_INT);
-            if (dimids != NULL)
-                memcpy(root_dimids, dimids, (size_t)root_ndims*SIZEOF_INT);
+            if (index_ids != NULL)
+                memcpy(root_dimids, index_ids, (size_t)root_ndims*SIZEOF_INT);
             else
                 memset(root_dimids, 0, (size_t)root_ndims*SIZEOF_INT);
             TRACE_COMM(MPI_Bcast)(root_dimids, root_ndims,MPI_INT,0,pncp->comm);
@@ -185,8 +191,8 @@ err_check:
                 NCI_Free(root_dimids);
                 return ncmpii_error_mpi2nc(mpireturn, "MPI_Bcast");
             }
-            if (err == NC_NOERR && dimids != NULL &&
-                memcmp(root_dimids, dimids, (size_t)root_ndims*SIZEOF_INT))
+            if (err == NC_NOERR && index_ids != NULL &&
+                memcmp(root_dimids, index_ids, (size_t)root_ndims*SIZEOF_INT))
                 DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_VAR_DIMIDS)
             NCI_Free(root_dimids);
         }
@@ -201,10 +207,12 @@ err_check:
     if (err != NC_NOERR) return err;
 
     /* calling the subroutine that implements ncmpi_def_var() */
-    err = pncp->driver->def_var(pncp->ncp, name, type, ndims, dimids, varidp);
+
+    err = pncp->driver->def_var(pncp->ncp, name, type, ndims, index_ids, varidp);
     if (err != NC_NOERR) return err;
 
     assert(*varidp == pncp->nvars);
+
 
     /* add new variable into pnc-vars[] */
     if (pncp->nvars % PNC_VARS_CHUNK == 0)
@@ -216,7 +224,7 @@ err_check:
     pncp->vars[*varidp].recdim = -1;   /* if fixed-size variable */
     pncp->vars[*varidp].shape  = NULL;
     if (ndims > 0) {
-        if (dimids[0] == pncp->unlimdimid) { /* record variable */
+        if (index_ids[0] == pncp->unlimdimid) { /* record variable */
             pncp->vars[*varidp].recdim = pncp->unlimdimid;
             pncp->nrec_vars++;
         }
@@ -225,13 +233,13 @@ err_check:
                                     NCI_Malloc(ndims * SIZEOF_MPI_OFFSET);
         for (i=0; i<ndims; i++) {
             /* obtain size of dimension i */
-            err = pncp->driver->inq_dim(pncp->ncp, dimids[i], NULL,
+            err = pncp->driver->inq_dim(pncp->ncp, index_ids[i], NULL,
                                         pncp->vars[*varidp].shape+i);
             if (err != NC_NOERR) return err;
         }
     }
     pncp->nvars++;
-
+    NCI_Free(index_ids);
     return NC_NOERR;
 }
 
@@ -292,6 +300,7 @@ ncmpi_inq_varid(int         ncid,    /* IN:  file ID */
 {
     int err;
     PNC *pncp;
+    NC *ncp=(NC*)pncp->ncp;
 
     /* check if ncid is valid */
     err = PNC_check_id(ncid, &pncp);
@@ -302,7 +311,9 @@ ncmpi_inq_varid(int         ncid,    /* IN:  file ID */
     if (strlen(name) > NC_MAX_NAME) DEBUG_RETURN_ERROR(NC_EMAXNAME)
 
     /* calling the subroutine that implements ncmpi_inq_varid() */
-    return pncp->driver->inq_varid(pncp->ncp, name, varidp);
+    err = pncp->driver->inq_varid(pncp->ncp, name, varidp);
+    *varidp = ncp->vars.localids[*varidp];
+    return err;
 }
 
 /*----< ncmpi_inq_var() >----------------------------------------------------*/
@@ -318,6 +329,9 @@ ncmpi_inq_var(int      ncid,    /* IN:  file ID */
 {
     int err;
     PNC *pncp;
+    NC *ncp=(NC*)pncp->ncp;
+    /*META: convert varid from local id to varid (index)*/
+    varid = ncp->vars.indexes[varid];
 
     /* check if ncid is valid */
     err = PNC_check_id(ncid, &pncp);
@@ -334,9 +348,14 @@ ncmpi_inq_var(int      ncid,    /* IN:  file ID */
     if (varid != NC_GLOBAL && (varid < 0 || varid >= pncp->nvars))
         DEBUG_RETURN_ERROR(NC_ENOTVAR)
 
-    /* calling the subroutine that implements ncmpi_inq_var() */
-    return pncp->driver->inq_var(pncp->ncp, varid, name, xtypep, ndimsp,
+
+    err = pncp->driver->inq_var(pncp->ncp, varid, name, xtypep, ndimsp,
                                  dimids, nattsp, NULL, NULL, NULL);
+    
+    /*META: convert dimids(index) to local ids*/
+    for(int i=0; i< *ndimsp; i++) dimids[i] = ncp->dims.localids[dimids[i]];
+    /* calling the subroutine that implements ncmpi_inq_var() */
+    return err;
 }
 
 /*----< ncmpi_inq_varname() >------------------------------------------------*/
@@ -604,6 +623,9 @@ ncmpi_rename_var(int         ncid,    /* IN: file ID */
 {
     int err;
     PNC *pncp;
+    NC *ncp=(NC*)pncp->ncp;
+
+    varid = ncp->vars.indexes[varid];
 
     /* check if ncid is valid */
     err = PNC_check_id(ncid, &pncp);

@@ -136,9 +136,14 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
                 ncmpio_free_NC_var(ncap->value[i]);
         }
         NCI_Free(ncap->value);
+        NCI_Free(ncap->localids);
+        NCI_Free(ncap->indexes);
+        ncap->localids = NULL;
+        ncap->indexes = NULL;
         ncap->value    = NULL;
     }
     ncap->ndefined = 0;
+    ncap->nread = 0;
 
 #ifndef SEARCH_NAME_LINEARLY
     /* free space allocated for var name lookup table */
@@ -165,17 +170,28 @@ ncmpio_dup_NC_vararray(NC_vararray       *ncap,
     if (ref->ndefined > 0) {
         size_t alloc_size = _RNDUP(ref->ndefined, NC_ARRAY_GROWBY);
         ncap->value = (NC_var **) NCI_Calloc(alloc_size, sizeof(NC_var*));
+        ncap->localids = (int *)  NCI_Calloc(alloc_size, SIZEOF_INT);
+        ncap->indexes = (int *)  NCI_Calloc(alloc_size, SIZEOF_INT);
+
         if (ncap->value == NULL) DEBUG_RETURN_ERROR(NC_ENOMEM)
+        // memcpy(ncap->localids, ref->localids, alloc_size * SIZEOF_INT);
+        // memcpy(ncap->indexes, ref->indexes, alloc_size * SIZEOF_INT);
     }
+
+        
 
     /* duplicate one NC_var object at a time */
     ncap->ndefined = 0;
+    ncap->nread = ref->nread;
     for (i=0; i<ref->ndefined; i++) {
         ncap->value[i] = dup_NC_var(ref->value[i]);
         if (ncap->value[i] == NULL) {
             DEBUG_ASSIGN_ERROR(status, NC_ENOMEM)
             break;
         }
+
+        ncap->localids[i] = ref->localids[i];
+        ncap->indexes[i] = ref->indexes[i];
         ncap->ndefined++;
     }
     if (status != NC_NOERR) {
@@ -347,10 +363,13 @@ ncmpio_def_var(void       *ncdp,
                const int  *dimids,
                int        *varidp)
 {
+
     int err=NC_NOERR;
     char *nname=NULL; /* normalized name */
     NC *ncp=(NC*)ncdp;
     NC_var *varp=NULL;
+    
+    
 
     /* create a normalized character string */
     err = ncmpii_utf8_normalize(name, &nname);
@@ -365,6 +384,7 @@ ncmpio_def_var(void       *ncdp,
     /* sanity check for xtype has been done at dispatchers */
     varp->xtype = xtype;
     ncmpii_xlen_nc_type(xtype, &varp->xsz);
+
 
     /* copy dimids[] */
     if (ndims != 0 && dimids != NULL)
@@ -383,6 +403,10 @@ ncmpio_def_var(void       *ncdp,
         size_t alloc_size = (size_t)ncp->vars.ndefined + NC_ARRAY_GROWBY;
         ncp->vars.value = (NC_var **) NCI_Realloc(ncp->vars.value,
                                       alloc_size * sizeof(NC_var*));
+        ncp->vars.localids = (int*) NCI_Realloc(ncp->vars.localids,
+                                      alloc_size * SIZEOF_INT);
+        ncp->vars.indexes = (int*) NCI_Realloc(ncp->vars.indexes,
+                                      alloc_size * SIZEOF_INT);
         if (ncp->vars.value == NULL) {
             ncmpio_free_NC_var(varp);
             nname = NULL; /* already freed in ncmpio_free_NC_var() */
@@ -391,12 +415,16 @@ ncmpio_def_var(void       *ncdp,
         }
     }
 
-    varp->varid = ncp->vars.ndefined; /* varid */
 
+    varp->varid = ncp->vars.ndefined; /* varid */
     /* Add a new handle to the end of an array of handles */
     ncp->vars.value[ncp->vars.ndefined] = varp;
-
     ncp->vars.ndefined++;
+    /*META*/
+    ncp->vars.localids[varp->varid] = varp->varid;
+    ncp->vars.indexes[varp->varid] = varp->varid;
+
+
 
 err_check:
     if (ncp->safe_mode) {

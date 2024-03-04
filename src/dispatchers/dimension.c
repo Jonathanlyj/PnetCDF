@@ -16,6 +16,7 @@
 #include <dispatch.h>
 #include <pnc_debug.h>
 #include <common.h>
+#include "../drivers/ncmpio/ncmpio_NC.h"
 
 /*----< ncmpi_def_dim() >----------------------------------------------------*/
 /* This is a collective subroutine. */
@@ -27,6 +28,7 @@ ncmpi_def_dim(int         ncid,    /* IN:  file ID */
 {
     int err=NC_NOERR, dimid;
     PNC *pncp;
+
 
     /* check if ncid is valid */
     err = PNC_check_id(ncid, &pncp);
@@ -159,10 +161,10 @@ err_check:
 
     if (size == NC_UNLIMITED && pncp->unlimdimid == -1)
         pncp->unlimdimid = dimid;
-
+   
     pncp->ndims++;
-
-    if (dimidp != NULL) *dimidp = dimid;
+    NC *ncp=(NC*)pncp->ncp;
+    if (dimidp != NULL) *dimidp = ncp->dims.localids[dimid];
 
     return NC_NOERR;
 }
@@ -176,6 +178,8 @@ ncmpi_inq_dimid(int         ncid,    /* IN:  file ID */
 {
     int err;
     PNC *pncp;
+    NC *ncp=(NC*)pncp->ncp;
+    
 
     /* check if ncid is valid */
     err = PNC_check_id(ncid, &pncp);
@@ -186,7 +190,10 @@ ncmpi_inq_dimid(int         ncid,    /* IN:  file ID */
     if (strlen(name) > NC_MAX_NAME) DEBUG_RETURN_ERROR(NC_EMAXNAME)
 
     /* calling the subroutine that implements ncmpi_inq_dimid() */
-    return pncp->driver->inq_dimid(pncp->ncp, name, dimidp);
+    err = pncp->driver->inq_dimid(pncp->ncp, name, dimidp);
+    /* META: pass it to index to localid mapping*/
+    (*dimidp) = ncp->dims.localids[*dimidp];
+    return err;
 }
 
 /*----< ncmpi_inq_dim() >----------------------------------------------------*/
@@ -199,6 +206,10 @@ ncmpi_inq_dim(int         ncid,    /* IN:  file ID */
 {
     int err;
     PNC *pncp;
+    
+    /*META: pass it to local_id to dimid(index) mapping first*/
+    NC *ncp=(NC*)pncp->ncp;
+    dimid = ncp->dims.indexes[dimid];
 
     /* check if ncid is valid */
     err = PNC_check_id(ncid, &pncp);
@@ -239,6 +250,9 @@ ncmpi_rename_dim(int         ncid,    /* IN: file ID */
 {
     int err=NC_NOERR, inq_id, skip_rename=0;
     PNC *pncp;
+
+    NC *ncp=(NC*)pncp->ncp;
+    dimid = ncp->dims.indexes[dimid];
 
     /* check if ncid is valid */
     err = PNC_check_id(ncid, &pncp);

@@ -91,6 +91,8 @@ ncmpio_redef(void *ncdp)
 
     /* we are now entering define mode */
     fSet(ncp->flags, NC_MODE_DEF);
+    /*META: Update number of dimensions read from file*/
+    ncp->dims.nread = ncp->dims.ndefined;
 
     return NC_NOERR;
 }

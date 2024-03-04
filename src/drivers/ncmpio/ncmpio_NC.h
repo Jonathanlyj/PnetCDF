@@ -135,6 +135,9 @@ typedef struct {
  */
 typedef struct NC_dimarray {
     int            ndefined;      /* number of defined dimensions */
+    int            nread;         /* number of dimensions read from file*/
+    int            *localids;         /* dimid(index) to local dim ids*/
+    int            *indexes;         /* local dim ids to dimid (index)*/
     int            unlimited_id;  /* -1 for not defined, otherwise >= 0 */
     NC_dim       **value;
     NC_nametable   nameT[HASH_TABLE_SIZE]; /* table for quick name lookup.
@@ -148,9 +151,11 @@ typedef struct NC_dimarray {
 /* Begin defined in dim.c ---------------------------------------------------*/
 extern void
 ncmpio_free_NC_dimarray(NC_dimarray *ncap);
-
 extern int
 ncmpio_dup_NC_dimarray(NC_dimarray *ncap, const NC_dimarray *ref);
+
+extern int
+ncmpio_NC_dimarray(NC_dimarray *ncap, const NC_dimarray *ref);
 
 /*
  * NC attribute
@@ -207,6 +212,7 @@ ncmpio_dup_NC_attrarray(NC_attrarray *ncap, const NC_attrarray *ref);
  */
 typedef struct {
     int           varid;   /* variable ID */
+    // int           localid;  /* local variable ID */
     int           xsz;     /* byte size of 1 array element */
     nc_type       xtype;   /* variable's external NC data type */
     int           no_fill; /* whether fill mode is disabled */
@@ -243,6 +249,9 @@ typedef struct {
 /* note: we only allow less than 2^31-1 variables defined in a file */
 typedef struct NC_vararray {
     int            ndefined;    /* number of defined variables */
+    int            nread;    /* number of variables read from file*/
+    int            *localids;         /* dimid(index) to local dim ids*/
+    int            *indexes;         /* local dim ids to dimid (index)*/
     int            num_rec_vars;/* number of defined record variables */
     NC_var       **value;
     NC_nametable   nameT[HASH_TABLE_SIZE]; /* table for quick name lookup.

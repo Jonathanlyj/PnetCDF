@@ -133,9 +133,14 @@ ncmpio_free_NC_dimarray(NC_dimarray *ncap)
             NCI_Free(ncap->value[i]);
         }
         NCI_Free(ncap->value);
+        NCI_Free(ncap->localids);
+        NCI_Free(ncap->indexes);
         ncap->value = NULL;
+        ncap->localids = NULL;
+        ncap->indexes = NULL;
     }
     ncap->ndefined = 0;
+    ncap->nread = 0;
 
 #ifndef SEARCH_NAME_LINEARLY
     /* free space allocated for dim name lookup table */
@@ -154,6 +159,7 @@ ncmpio_dup_NC_dimarray(NC_dimarray *ncap, const NC_dimarray *ref)
 
     if (ref->ndefined == 0) {
         ncap->ndefined = 0;
+        
         ncap->value    = NULL;
         return NC_NOERR;
     }
@@ -162,19 +168,25 @@ ncmpio_dup_NC_dimarray(NC_dimarray *ncap, const NC_dimarray *ref)
     if (ref->ndefined > 0) {
         size_t alloc_size = _RNDUP(ref->ndefined, NC_ARRAY_GROWBY);
         ncap->value = (NC_dim**) NCI_Calloc(alloc_size, sizeof(NC_dim*));
+        ncap->localids = (int*) NCI_Calloc(alloc_size, SIZEOF_INT);
+        ncap->indexes = (int*) NCI_Calloc(alloc_size, SIZEOF_INT);
         if (ncap->value == NULL) DEBUG_RETURN_ERROR(NC_ENOMEM)
     }
 
     /* duplicate each NC_dim objects */
     ncap->ndefined = 0;
+    ncap->nread = ref->nread;
     for (i=0; i<ref->ndefined; i++) {
         status = dup_NC_dim(ref->value[i], &ncap->value[i]);
         if (status != NC_NOERR) {
             ncmpio_free_NC_dimarray(ncap);
             return status;
         }
+        ncap->localids[i] = ref->localids[i];
+        ncap->indexes[i] = ref->indexes[i];
         ncap->ndefined++;
     }
+    
     assert(ncap->ndefined == ref->ndefined);
 
 #ifndef SEARCH_NAME_LINEARLY
@@ -217,6 +229,10 @@ ncmpio_def_dim(void       *ncdp,    /* IN:  NC object */
 
         ncp->dims.value = (NC_dim **) NCI_Realloc(ncp->dims.value,
                                       alloc_size * sizeof(NC_dim*));
+        ncp->dims.localids = (int*) NCI_Realloc(ncp->dims.localids,
+                                      alloc_size * SIZEOF_INT);
+        ncp->dims.indexes = (int*) NCI_Realloc(ncp->dims.indexes,
+                                      alloc_size * SIZEOF_INT);
         if (ncp->dims.value == NULL) {
             NCI_Free(nname);
             NCI_Free(dimp);
@@ -225,6 +241,9 @@ ncmpio_def_dim(void       *ncdp,    /* IN:  NC object */
     }
 
     dimid = ncp->dims.ndefined;
+    ncp->dims.localids[dimid] = dimid;
+    ncp->dims.indexes[dimid] = dimid;
+
 
     /* Add a new dim handle to the end of handle array */
     ncp->dims.value[dimid] = dimp;
@@ -272,6 +291,7 @@ ncmpio_inq_dim(void       *ncdp,
     NC_dim *dimp;
     NC *ncp=(NC*)ncdp;
 
+
     /* sanity check for dimid has been done at dispatchers */
     dimp = ncp->dims.value[dimid];
 
@@ -309,7 +329,6 @@ ncmpio_rename_dim(void       *ncdp,
     if (err != NC_NOERR) goto err_check;
 
     nnewname_len = strlen(nnewname);
-
     /* sanity check for dimid has been done at dispatchers */
     dimp = ncp->dims.value[dimid];
 
