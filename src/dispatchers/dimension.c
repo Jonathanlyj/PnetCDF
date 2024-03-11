@@ -97,12 +97,12 @@ ncmpi_def_dim(int         ncid,    /* IN:  file ID */
     }
 
     /* check if the name string is previously used */
-    err = pncp->driver->inq_dimid(pncp->ncp, name, NULL);
-    if (err != NC_EBADDIM) {
-        DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
-        goto err_check;
-    }
-    else err = NC_NOERR;
+    // err = pncp->driver->inq_dimid(pncp->ncp, name, NULL);
+    // if (err != NC_EBADDIM) {
+    //     DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
+    //     goto err_check;
+    // }
+    // else err = NC_NOERR;
 
 err_check:
     if (pncp->flag & NC_MODE_SAFE) {

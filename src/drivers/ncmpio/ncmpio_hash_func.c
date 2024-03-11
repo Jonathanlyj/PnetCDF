@@ -180,7 +180,8 @@ void
 ncmpio_hash_insert(NC_nametable *nameT, /* var name lookup table */
                    const char   *name,
                    int           id)
-{
+{   
+    // printf("\n %s, dimid %d", name, id);
     int key;
 
     /* hash the name into a key for name lookup */
@@ -193,8 +194,10 @@ ncmpio_hash_insert(NC_nametable *nameT, /* var name lookup table */
                           SIZEOF_INT);
 
     /* add the ID to the name lookup table */
+    
     nameT[key].list[nameT[key].num] = id;
     nameT[key].num++;
+    
 }
 
 /*----< ncmpio_hash_delete() >-----------------------------------------------*/
@@ -311,8 +314,11 @@ ncmpio_hash_table_free(NC_nametable *nameT)
 {
     int i;
     for (i=0; i<HASH_TABLE_SIZE; i++) {
-        if (nameT[i].num > 0)
+        if (nameT[i].num > 0){
             NCI_Free(nameT[i].list);
+        }
+
+            
         nameT[i].num = 0;
     }
 }

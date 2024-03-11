@@ -1,6 +1,7 @@
 #include <stddef.h> 
 #include <mpi.h>
 #include <pnetcdf.h>
+#include <stdbool.h>
 
 
 #define NC_NOERR        0  
@@ -16,6 +17,8 @@
 typedef struct {
     MPI_Offset  size;
     size_t      name_len; /* strlen(name), for faster string compare */
+    // bool         shared;
+    // int        global_idx; 
     char       *name;
 } hdr_dim;
 

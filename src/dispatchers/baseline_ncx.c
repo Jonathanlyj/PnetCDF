@@ -327,6 +327,8 @@ static int deserialize_dim(metabuffer *gbp, hdr_dim *dimp) {
     get_uint32((void**)&gbp->pos, &tmp);
     dim_length = (MPI_Offset)tmp;
     dimp->name     = name;
+    // dimp->shared   = false;
+    // dimp->global_idx = 0;
     dimp->name_len = strlen(name);
     dimp->size     = dim_length;
     return 0;

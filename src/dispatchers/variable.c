@@ -110,13 +110,13 @@ ncmpi_def_var(int         ncid,    /* IN:  file ID */
 
     /* check whether new name is already in use, for this API (def_var) the
      * name should NOT already exist */
-    err = pncp->driver->inq_varid(pncp->ncp, name, NULL);
-    if (err != NC_ENOTVAR) {
-        DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
-        goto err_check;
-    }
-    else
-        err = NC_NOERR;
+    // err = pncp->driver->inq_varid(pncp->ncp, name, NULL);
+    // if (err != NC_ENOTVAR) {
+    //     DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
+    //     goto err_check;
+    // }
+    // else
+    //     err = NC_NOERR;
     NC *ncp=(NC*)pncp->ncp;
     /*META: convert to dimids(index)*/
     for(int i=0; i< ndims; i++) index_ids[i] = ncp->dims.indexes[dimids[i]];

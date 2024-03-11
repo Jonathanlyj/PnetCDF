@@ -144,6 +144,7 @@ ncmpio_free_NC_dimarray(NC_dimarray *ncap)
 
 #ifndef SEARCH_NAME_LINEARLY
     /* free space allocated for dim name lookup table */
+    // printf("\nfree dim t");
     ncmpio_hash_table_free(ncap->nameT);
 #endif
 }

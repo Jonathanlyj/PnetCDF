@@ -147,6 +147,7 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
 
 #ifndef SEARCH_NAME_LINEARLY
     /* free space allocated for var name lookup table */
+    // printf("\nfree var t");
     ncmpio_hash_table_free(ncap->nameT);
 #endif
 }
