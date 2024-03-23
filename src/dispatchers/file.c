@@ -351,8 +351,8 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
                         ncp->dims.localids[old_dimarray->localids[i]] = prev_localid;
                         //update local-global index mapping (for variable)
                         
-                        printf("\n ncp->dims.localids[dimid] %d", ncp->dims.localids[dimid]);
-                        printf("\n ncp->dims.localids[old_dimarray->localids[i]] %d", ncp->dims.localids[old_dimarray->localids[i]]);
+                        // printf("\n ncp->dims.localids[dimid] %d", ncp->dims.localids[dimid]);
+                        // printf("\n ncp->dims.localids[old_dimarray->localids[i]] %d", ncp->dims.localids[old_dimarray->localids[i]]);
                     }
                     new_indexes[i] = dimid;
                     //other processes has no need to change localids at all
@@ -438,11 +438,47 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
             }else{
                 //check if name already used
                 err = pncp->driver->inq_varid(pncp->ncp, hdr_data->vars.value[i]->name, &varid);
+
                 if (err != NC_ENOTVAR){
-                //Disable shared variable across processes for now
-                DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
-                goto err_check;
-                }
+                    //same name
+                    //check type and ndims
+                    nc_type old_xtype = ncp->vars.value[varid]->xtype;
+                    int old_ndims = ncp->vars.value[varid]->ndims;
+                    if (hdr_data->vars.value[i]->xtype == old_xtype && hdr_data->vars.value[i]->ndims == old_ndims){
+                        //check ndimid
+                        for(int k=0; k< old_ndims;k++){
+                            if (ncp->vars.value[varid]->dimids[k] != hdr_data->vars.value[i]->dimids[k]){
+                                // dimid not match
+                                DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
+                                goto err_check;
+                            }
+                        }
+                        //TODO: also check variable attributes
+                        //shared variable skip define since it is already defined
+                        if (rank == hdr_idx){
+                            /*Simple case rank 0: v1, v2; rank 1: v2, v3
+                            when iterate to rank1, v2, rank0 needs to do nothing
+                            for rank1, rank1 already gave v2 a local id of 1, but now it realize it should give 0 so localids[v2]-> 0
+                            but rank1 already gave v1 a local id of 0, so needs to correct localid of v1, localids[v1] -> pre_localids_of_v2
+                            */
+                            //maintain old local id for this var
+                            // printf("\n old_vararray->localids[i] %d", old_vararray->localids[i]);
+                            int prev_localid = ncp->vars.localids[varid];
+                            ncp->vars.localids[varid] = old_vararray->localids[i];
+                            //correct the local id that was previously assigned to a var
+                            ncp->vars.localids[old_vararray->localids[i]] = prev_localid;
+                            //update local-global index mapping (for variable)
+                        }
+                        //skip define
+                        continue;
+
+                    }else{
+                        // nvars or type not match
+                        DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
+                        goto err_check;
+                    }
+
+                } 
             }
         }
         //All other cases: create the new variable
@@ -1577,8 +1613,8 @@ ncmpi_enddef(int ncid) {
 
     //for (int j = 0; j < ncp->dims.ndefined; j++) ncp->dims.indexes[ncp->dims.localids[j]] = j;
     
-    // for (int j = 0; j < ncp->vars.ndefined; j++) printf("\n rank: %d:  %d : %d", rank, j, ncp->vars.localids[j]);
-    for (int j = 0; j < ncp->dims.ndefined; j++) printf("\n rank: %d:  %d : %d", rank, j, ncp->dims.localids[j]);
+    for (int j = 0; j < ncp->vars.ndefined; j++) printf("\n rank: %d: ---- global id: %d ---- local id: %d", rank, j, ncp->vars.localids[j]);
+    // for (int j = 0; j < ncp->dims.ndefined; j++) printf("\n rank: %d:  %d : %d", rank, j, ncp->dims.localids[j]);
     for (int j = 0; j < ncp->dims.ndefined; j++) ncp->dims.indexes[ncp->dims.localids[j]] = j;
     for (int j = 0; j < ncp->vars.ndefined; j++) ncp->vars.indexes[ncp->vars.localids[j]] = j;
 
