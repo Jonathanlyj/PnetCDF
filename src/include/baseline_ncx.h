@@ -108,4 +108,12 @@ static int deserialize_attrarray(metabuffer *gbp, hdr_attrarray *ncap);
 static int deserialize_var(metabuffer *gbp, hdr_var *varp);
 static int deserialize_vararray(metabuffer *gbp, hdr_vararray *ncap);
 
+/* Function prototypes */
+void free_hdr_dim(hdr_dim *dim);
+void free_hdr_dimarray(hdr_dimarray *dims);
+void free_hdr_attr(hdr_attr *attr);
+void free_hdr_attrarray(hdr_attrarray *attrs);
+void free_hdr_var(hdr_var *var);
+void free_hdr_vararray(hdr_vararray *vars);
+void free_hdr(struct hdr *header);
 

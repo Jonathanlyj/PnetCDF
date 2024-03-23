@@ -315,6 +315,7 @@ ncmpio_hash_table_free(NC_nametable *nameT)
     int i;
     for (i=0; i<HASH_TABLE_SIZE; i++) {
         if (nameT[i].num > 0){
+            // printf("\n nameT[i].num %d, list[0]: %d, size of arr: %zu", nameT[i].num, nameT[i].list[0], sizeof(nameT[i].list));
             NCI_Free(nameT[i].list);
         }
 

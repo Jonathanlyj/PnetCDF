@@ -529,3 +529,69 @@ int deserialize_hdr(struct hdr *ncp, void *buf, int buf_size) {
 
     return 0;
 }
+void free_hdr_dim(hdr_dim *dim) {
+    if (dim != NULL) {
+        free(dim->name);
+        free(dim);
+    }
+}
+
+void free_hdr_dimarray(hdr_dimarray *dims) {
+    if (dims != NULL) {
+        for (int i = 0; i < dims->ndefined; i++) {
+            free_hdr_dim(dims->value[i]);
+        }
+        free(dims->value);
+        //free(dims);
+    }
+}
+
+void free_hdr_attr(hdr_attr *attr) {
+    if (attr != NULL) {
+        free(attr->name);
+        free(attr->xvalue);
+        // free(attr);
+    }
+}
+
+void free_hdr_attrarray(hdr_attrarray *attrs) {
+    if (attrs != NULL) {
+        if (attrs->value != NULL) {
+            for (int i = 0; i < attrs->ndefined; i++) {
+                free_hdr_attr(attrs->value[i]);
+            }
+            // free(attrs->value);
+            attrs->value = NULL;
+            // free(attrs);
+        }
+    }
+}
+
+void free_hdr_var(hdr_var *var) {
+    if (var != NULL) {
+        free(var->name);
+        free(var->dimids);
+        free_hdr_attrarray(&(var->attrs));
+        free(var);
+    }
+}
+
+void free_hdr_vararray(hdr_vararray *vars) {
+    if (vars != NULL) {
+        for (int i = 0; i < vars->ndefined; i++) {
+            free_hdr_var(vars->value[i]);
+        }
+        free(vars->value);
+        // free(vars);
+    }
+}
+
+void free_hdr(struct hdr *header) {
+    if (header != NULL) {
+        free_hdr_dimarray(&(header->dims));
+        // free_hdr_attrarray(&(header->attrs));
+        free_hdr_vararray(&(header->vars));
+        // free(header);
+    }
+}
+

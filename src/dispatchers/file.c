@@ -207,8 +207,18 @@ static int add_dim(NC* ncp, int *dimidp, char* name, MPI_Offset size){
     ncp->dims.ndefined++;
 
     #ifndef SEARCH_NAME_LINEARLY
-        // ncmpio_hash_insert(ncp->dims.nameT, nname, dimid);
+    // ncmpio_hash_insert(ncp->dims.nameT, nname, dimid);
+    // printf("\n test free here");
+    // ncmpio_hash_table_free(ncp->dims.nameT);
+
+    if(ncp->dims.ndefined==1){
         ncmpio_hash_table_populate_NC_dim(&ncp->dims);
+        
+    }else{
+        // ncmpio_hash_table_populate_NC_dim(&ncp->dims);
+        ncmpio_hash_insert(ncp->dims.nameT, nname, dimid);
+    }
+        
     #endif
 
     return NC_NOERR;
@@ -302,7 +312,7 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
 
      for (i=0; i<ndims; i++){
         // int shared_dim = 0;
-
+        printf("\n rank %d, i %d, hdr_idx %d", rank, i , hdr_idx);
        if(i < old_dimarray->nread){
             //intial definition for dim read from file
             
@@ -331,14 +341,20 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
                     goto err_check;
                 }else{
                     //a shread dimension, skip define since its read from file and already defined
-                    
+                   
                     if (rank == hdr_idx){
                         //maintain old local id for this dim
+                        // printf("\n old_dimarray->localids[i] %d", old_dimarray->localids[i]);
                         int prev_localid = ncp->dims.localids[dimid];
                         ncp->dims.localids[dimid] = old_dimarray->localids[i];
                         //correct the local id that was previously assigned to a dim
                         ncp->dims.localids[old_dimarray->localids[i]] = prev_localid;
+                        //update local-global index mapping (for variable)
+                        
+                        printf("\n ncp->dims.localids[dimid] %d", ncp->dims.localids[dimid]);
+                        printf("\n ncp->dims.localids[old_dimarray->localids[i]] %d", ncp->dims.localids[old_dimarray->localids[i]]);
                     }
+                    new_indexes[i] = dimid;
                     //other processes has no need to change localids at all
                 }
             }else{
@@ -363,8 +379,9 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
 
         }
      }     
-
+    
     //add variables
+
     int nvars = hdr_data->vars.ndefined;
     int cum_nvars = ncp->vars.ndefined;
     // int *varid = (int *)malloc(nvars * sizeof(int));
@@ -437,6 +454,7 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
         NC_var *varp=NULL;
 
         v_dimids = (int *)NCI_Malloc(v_ndims * sizeof(int));
+
         for(j=0; j<v_ndims; j++) v_dimids[j] = new_indexes[hdr_data->vars.value[i]->dimids[j]];
 
         /* create a normalized character string */
@@ -467,8 +485,15 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
         ncp->vars.ndefined++;
 #ifndef SEARCH_NAME_LINEARLY
     /* insert nname to the lookup table */
-        // ncmpio_hash_insert(ncp->vars.nameT, nname, varp->varid);
-        ncmpio_hash_table_populate_NC_var(&ncp->vars);
+        if(ncp->vars.ndefined==1){
+            ncmpio_hash_table_populate_NC_var(&ncp->vars);
+        }else{
+            ncmpio_hash_insert(ncp->vars.nameT, nname, varp->varid);
+            // ncmpio_hash_table_populate_NC_var(&ncp->vars);
+        }
+        
+
+        
         
 #endif
         //Update PNC object
@@ -558,6 +583,7 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
 
        
     }
+
     NCI_Free(new_indexes);
 
 err_check:
@@ -1538,12 +1564,13 @@ ncmpi_enddef(int ncid) {
         deserialize_hdr(&recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
         err = add_hdr(&recv_hdr, i, rank, pncp, old_dimarray, old_vararray);
         if (err != NC_NOERR) return err;
-    }
 
+    }
+    
     // #ifndef SEARCH_NAME_LINEARLY
     //     /* initialize and populate name lookup tables ---------------------------*/
-        // ncmpio_hash_table_populate_NC_dim(&ncp->dims);
-        // ncmpio_hash_table_populate_NC_var(&ncp->vars);
+    //     ncmpio_hash_table_populate_NC_dim(&ncp->dims);
+    //     ncmpio_hash_table_populate_NC_var(&ncp->vars);
 
     // #endif
     //update local id to index mapping based on index to local id mapping
@@ -1553,7 +1580,6 @@ ncmpi_enddef(int ncid) {
     // for (int j = 0; j < ncp->vars.ndefined; j++) printf("\n rank: %d:  %d : %d", rank, j, ncp->vars.localids[j]);
     for (int j = 0; j < ncp->dims.ndefined; j++) printf("\n rank: %d:  %d : %d", rank, j, ncp->dims.localids[j]);
     for (int j = 0; j < ncp->dims.ndefined; j++) ncp->dims.indexes[ncp->dims.localids[j]] = j;
-
     for (int j = 0; j < ncp->vars.ndefined; j++) ncp->vars.indexes[ncp->vars.localids[j]] = j;
 
     ncmpio_free_NC_dimarray(old_dimarray);
