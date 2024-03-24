@@ -312,12 +312,11 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
 
      for (i=0; i<ndims; i++){
         // int shared_dim = 0;
-        printf("\n rank %d, i %d, hdr_idx %d", rank, i , hdr_idx);
+        // printf("\n rank %d, i %d, hdr_idx %d", rank, i , hdr_idx);
        if(i < old_dimarray->nread){
             //intial definition for dim read from file
             
             if (hdr_idx == 0){
-               
                 err = add_dim(ncp, &dimid, hdr_data->dims.value[i]->name,hdr_data->dims.value[i]->size);
                 if (err != NC_NOERR) return err;
                 
@@ -327,6 +326,8 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
             }
             //maintain the old index to localid mapping       
             ncp->dims.localids[i] = old_dimarray->localids[i];
+            //increment of localid generator
+            dimid_generator++;
             //update local-global index mapping (for variable)
             new_indexes[i] = i;
         }else{ //newly defined dims
@@ -334,6 +335,11 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
             err = pncp->driver->inq_dimid(ncp, hdr_data->dims.value[i]->name, &dimid);
             if (err != NC_EBADDIM) {
                 //name matched, check property
+                if (dimid < old_dimarray->nread){
+                    //name conflict with a dim read from file, error out
+                    DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_DIM_NAME)
+                    goto err_check;
+                }
                 len = ncp->dims.value[dimid]->size;
                 if (len!= hdr_data->dims.value[i]->size){
                     //duplicated name but different value error out
@@ -441,6 +447,11 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
 
                 if (err != NC_ENOTVAR){
                     //same name
+                    if(varid < old_vararray->nread){
+                        //name conflict with a var read from file, error out
+                        DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
+                        goto err_check;
+                    }
                     //check type and ndims
                     nc_type old_xtype = ncp->vars.value[varid]->xtype;
                     int old_ndims = ncp->vars.value[varid]->ndims;
@@ -545,7 +556,7 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
             pncp->vars[varp->varid].xtype  = xtype;
             pncp->vars[varp->varid].recdim = -1;   /* if fixed-size variable */
             pncp->vars[varp->varid].shape  = NULL;
-            if (ndims > 0) {
+            if (v_ndims > 0) {
                 if (v_dimids[0] == pncp->unlimdimid) { /* record variable */
                     pncp->vars[varp->varid].recdim = pncp->unlimdimid;
                     pncp->nrec_vars++;
@@ -553,7 +564,7 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
 
                 pncp->vars[varp->varid].shape = (MPI_Offset*)
                                             NCI_Malloc(v_ndims * SIZEOF_MPI_OFFSET);
-                for (int dim_i=0; dim_i<ndims; dim_i++) {
+                for (int dim_i=0; dim_i<v_ndims; dim_i++) {
                     /* obtain size of dimension i */
                     err = pncp->driver->inq_dim(pncp->ncp, v_dimids[dim_i], NULL,
                                                 pncp->vars[varp->varid].shape+dim_i);
@@ -602,6 +613,8 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
         if (hdr_idx == 0 && i < old_vararray->nread){
             // variable read from file, all processes maintain their original
             ncp->vars.localids[i] = old_vararray->localids[i];
+            //increment of local id generator
+            varid_generator++;
         }else if(rank == hdr_idx){
             // the "host" process need to maintain the origianl mapping
             
