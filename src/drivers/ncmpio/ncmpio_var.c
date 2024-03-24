@@ -514,6 +514,10 @@ ncmpio_inq_var(void       *ncdp,
     if (varid == NC_GLOBAL) DEBUG_RETURN_ERROR(NC_EGLOBAL)
      */
 
+    /*META: convert varid from local id to varid (index)*/
+    // printf("\n varid: %d", varid);
+    varid = ncp->vars.indexes[varid];
+
     if (varid == NC_GLOBAL) {
         /* in this case, all other pointer arguments must be NULLs */
         if (nattsp != NULL)
@@ -546,9 +550,22 @@ ncmpio_inq_var(void       *ncdp,
             memcpy(dimids, varp->dimids_org, (size_t)varp->ndims_org * SIZEOF_INT);
         else
 #endif
+    /*META: convert dimids(index) to local ids*/
+    int* dim_localids = malloc(varp->ndims * sizeof(int));
+    for(int i=0; i<varp->ndims; i++) dim_localids[i] = ncp->dims.localids[varp->dimids[i]];
+
         if (varp->ndims > 0)
-            memcpy(dimids, varp->dimids, (size_t)varp->ndims * SIZEOF_INT);
+            memcpy(dimids, dim_localids, (size_t)varp->ndims * SIZEOF_INT);
+            // memcpy(dimids, varp->dimids, (size_t)varp->ndims * SIZEOF_INT);
+    NCI_Free(dim_localids);
     }
+    
+    // printf("\n ndims:%d", varp->ndims);
+    // for(int i=0; i<varp->ndims; i++) {
+    //     // printf("\n varp->dimids[0]:%d", varp->dimids[0]);
+    //     dimids[i] = ncp->dims.localids[varp->dimids[i]];
+    // }
+
     if (nattsp != NULL) *nattsp = varp->attrs.ndefined;
 
     if (offsetp != NULL) *offsetp = varp->begin;

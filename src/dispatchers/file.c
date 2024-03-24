@@ -136,8 +136,8 @@ static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
        var_info->name = (char *)NCI_Malloc(var_info->name_len + 1);
        strcpy(var_info->name, ncp->vars.value[i]->name);
        var_info->ndims = ncp->vars.value[i]->ndims;
-       var_info->dimids = (int *)NCI_Malloc((i + 1) * sizeof(int));
-        for (int j = 0; j <=var_info->ndims; j++) {
+       var_info->dimids = (int *)NCI_Malloc((var_info->ndims) * sizeof(int));
+        for (int j = 0; j <var_info->ndims; j++) {
            var_info->dimids[j] = ncp->vars.value[i]->dimids[j];
         }
         // file_info->vars.value[i] = var_info;
@@ -263,13 +263,6 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
     int dimid_generator,varid_generator;
     dimid_generator =  ncp->dims.ndefined;
     varid_generator =  ncp->vars.ndefined;
-    // if(hdr_idx<rank){
-    //     dimid_generator = ncp->dims.ndefined + old_dimarray->ndefined;
-    //     varid_generator = ncp->vars.ndefined + old_vararray->ndefined;
-    // }else{
-    //     dimid_generator = ncp->dims.ndefined;
-    //     varid_generator = ncp->vars.ndefined;
-    // }
 
     //store dims
         /*Reorganize this:
@@ -315,11 +308,9 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
         // printf("\n rank %d, i %d, hdr_idx %d", rank, i , hdr_idx);
        if(i < old_dimarray->nread){
             //intial definition for dim read from file
-            
             if (hdr_idx == 0){
                 err = add_dim(ncp, &dimid, hdr_data->dims.value[i]->name,hdr_data->dims.value[i]->size);
                 if (err != NC_NOERR) return err;
-                
                 //update pnc header
                 pncp->ndims++;
                 if (hdr_data->dims.value[i]->size == NC_UNLIMITED && pncp->unlimdimid == -1) pncp->unlimdimid = dimid;
@@ -382,10 +373,9 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
                         ncp->dims.localids[dimid] = dimid_generator++;
                     }
             }
-
         }
-     }     
-    
+    }     
+
     //add variables
 
     int nvars = hdr_data->vars.ndefined;
@@ -493,6 +483,7 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
             }
         }
         //All other cases: create the new variable
+
         v_namelen = hdr_data->vars.value[i]->name_len;
         xtype = hdr_data->vars.value[i]->xtype;
         v_ndims = hdr_data->vars.value[i]->ndims;
@@ -541,10 +532,9 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
         
 
         
-        
 #endif
         //Update PNC object
-  
+        // printf("\n started add PNC new varaible object");
         /* default is NOFILL */
         varp->no_fill = 1;
 
@@ -553,9 +543,10 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
 
         //Add var to PNC object
         pncp->vars[varp->varid].ndims  = v_ndims;
-            pncp->vars[varp->varid].xtype  = xtype;
-            pncp->vars[varp->varid].recdim = -1;   /* if fixed-size variable */
-            pncp->vars[varp->varid].shape  = NULL;
+        pncp->vars[varp->varid].xtype  = xtype;
+        pncp->vars[varp->varid].recdim = -1;   /* if fixed-size variable */
+        pncp->vars[varp->varid].shape  = NULL;
+        // printf("\n start add PNC new varaible object dimid");
             if (v_ndims > 0) {
                 if (v_dimids[0] == pncp->unlimdimid) { /* record variable */
                     pncp->vars[varp->varid].recdim = pncp->unlimdimid;
@@ -564,17 +555,22 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
 
                 pncp->vars[varp->varid].shape = (MPI_Offset*)
                                             NCI_Malloc(v_ndims * SIZEOF_MPI_OFFSET);
+
                 for (int dim_i=0; dim_i<v_ndims; dim_i++) {
                     /* obtain size of dimension i */
-                    err = pncp->driver->inq_dim(pncp->ncp, v_dimids[dim_i], NULL,
-                                                pncp->vars[varp->varid].shape+dim_i);
+                    // META: cannot use the old appraoch here because ncmpio_inq_dim now convert localid to global id first
+                    int original_dimid = hdr_data->vars.value[i]->dimids[dim_i];
+                    pncp->vars[varp->varid].shape[dim_i] = hdr_data->dims.value[original_dimid]->size;
+                    // err = pncp->driver->inq_dim(pncp->ncp, v_dimids[dim_i], NULL,
+                    //                             pncp->vars[varp->varid].shape+dim_i);
                     if (err != NC_NOERR) return err;
                 }
             }
             pncp->nvars++;
 
         // Add variable attributes
-
+        // printf("\n finished add PNC new varaible object");
+        
         int att_namelen, att_xtype, att_nelems,v_attr_xsz, nbytes;
         int nattrs = hdr_data->vars.value[i]->attrs.ndefined;
         int att_vid = varp->varid;
@@ -1611,9 +1607,9 @@ ncmpi_enddef(int ncid) {
         struct hdr recv_hdr;
         // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
         deserialize_hdr(&recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
+        // printf("\nmilestone4: %d", i);
         err = add_hdr(&recv_hdr, i, rank, pncp, old_dimarray, old_vararray);
         if (err != NC_NOERR) return err;
-
     }
     
     // #ifndef SEARCH_NAME_LINEARLY
@@ -1626,7 +1622,7 @@ ncmpi_enddef(int ncid) {
 
     //for (int j = 0; j < ncp->dims.ndefined; j++) ncp->dims.indexes[ncp->dims.localids[j]] = j;
     
-    for (int j = 0; j < ncp->vars.ndefined; j++) printf("\n rank: %d: ---- global id: %d ---- local id: %d", rank, j, ncp->vars.localids[j]);
+    // for (int j = 0; j < ncp->vars.ndefined; j++) printf("\n rank: %d: ---- global id: %d ---- local id: %d", rank, j, ncp->vars.localids[j]);
     // for (int j = 0; j < ncp->dims.ndefined; j++) printf("\n rank: %d:  %d : %d", rank, j, ncp->dims.localids[j]);
     for (int j = 0; j < ncp->dims.ndefined; j++) ncp->dims.indexes[ncp->dims.localids[j]] = j;
     for (int j = 0; j < ncp->vars.ndefined; j++) ncp->vars.indexes[ncp->vars.localids[j]] = j;

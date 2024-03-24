@@ -207,9 +207,6 @@ ncmpi_inq_dim(int         ncid,    /* IN:  file ID */
     int err;
     PNC *pncp;
     
-    /*META: pass it to local_id to dimid(index) mapping first*/
-    NC *ncp=(NC*)pncp->ncp;
-    dimid = ncp->dims.indexes[dimid];
 
     /* check if ncid is valid */
     err = PNC_check_id(ncid, &pncp);

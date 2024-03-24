@@ -292,6 +292,8 @@ ncmpio_inq_dim(void       *ncdp,
     NC_dim *dimp;
     NC *ncp=(NC*)ncdp;
 
+    /*META: pass it to local_id to dimid(index) mapping first*/
+    dimid = ncp->dims.indexes[dimid];
 
     /* sanity check for dimid has been done at dispatchers */
     dimp = ncp->dims.value[dimid];
@@ -331,6 +333,10 @@ ncmpio_rename_dim(void       *ncdp,
 
     nnewname_len = strlen(nnewname);
     /* sanity check for dimid has been done at dispatchers */
+
+    /*META: pass it to local_id to dimid(index) mapping first*/
+    dimid = ncp->dims.indexes[dimid];
+
     dimp = ncp->dims.value[dimid];
 
     if (! NC_indef(ncp) && dimp->name_len < nnewname_len) {

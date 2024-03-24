@@ -329,13 +329,15 @@ ncmpi_inq_var(int      ncid,    /* IN:  file ID */
 {
     int err;
     PNC *pncp;
-    NC *ncp=(NC*)pncp->ncp;
-    /*META: convert varid from local id to varid (index)*/
-    varid = ncp->vars.indexes[varid];
+    
+
 
     /* check if ncid is valid */
     err = PNC_check_id(ncid, &pncp);
     if (err != NC_NOERR) return err;
+
+    
+
 
     /* using NC_GLOBAL in varid is illegal for this API. See
      * http://www.unidata.ucar.edu/mailing_lists/archives/netcdfgroup/2015/msg00196.html
@@ -352,8 +354,7 @@ ncmpi_inq_var(int      ncid,    /* IN:  file ID */
     err = pncp->driver->inq_var(pncp->ncp, varid, name, xtypep, ndimsp,
                                  dimids, nattsp, NULL, NULL, NULL);
     
-    /*META: convert dimids(index) to local ids*/
-    for(int i=0; i< *ndimsp; i++) dimids[i] = ncp->dims.localids[dimids[i]];
+
     /* calling the subroutine that implements ncmpi_inq_var() */
     return err;
 }
