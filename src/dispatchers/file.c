@@ -225,8 +225,48 @@ static int add_dim(NC* ncp, int *dimidp, char* name, MPI_Offset size){
 
 }
 
+/*META: customized dim name compare function for sort*/
+int compare_dim_name(const hdr_dim *dim_a, const hdr_dim *dim_b) {
+    // hdr_dim * dim_a = *(hdr_dim **)a;
+    // hdr_dim * dim_b = *(hdr_dim **)b;
+    if (dim_a->name_len < dim_b->name_len) {
+        return -1;
+    } else if (dim_a->name_len > dim_b->name_len) {
+        return 1;
+    } else {
+        return strcmp(dim_a->name, dim_b->name);
+    }
+}
+
+
+/*META: customized dim name compare function for sort*/
+int compare_dim(const void *a, const void *b) {
+    hdr_dim * dim_a = *(hdr_dim **)a;
+    hdr_dim * dim_b = *(hdr_dim **)b;
+    int strcmp_rst = 0;
+    if (dim_a->name_len < dim_b->name_len) {
+        return -1;
+    } else if (dim_a->name_len > dim_b->name_len) {
+        return 1;
+    } else{
+        strcmp_rst = strcmp(dim_a->name, dim_b->name);
+        if(strcmp_rst == 0){
+            if (dim_a->rank_id < dim_b->rank_id) return -1;
+            if (dim_a->rank_id > dim_b->rank_id) return 1;
+            if (dim_a->ranklocal_id < dim_b->ranklocal_id) return -1;
+            if (dim_a->ranklocal_id > dim_b->ranklocal_id) return 1;
+            return 0;
+        }else {
+            return strcmp_rst;
+        }
+    }
+}
+
+
+
+
 /*META: Add metadata to header object*/
-static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const NC_dimarray* old_dimarray, const NC_vararray* old_vararray){
+static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const NC_dimarray* old_dimarray, const NC_vararray* old_vararray, hdr_dim** sort_dims, int ndims_tmp, int** dim_sort_map){
     // NC_dimarray* ncdims, NC_vararray* ncvars
     NC *ncp=(NC*)pncp->ncp;
     //add dimensions 
@@ -234,7 +274,7 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
     int cum_ndims = ncp->dims.ndefined;
 
     int i,j,k,nerrs=0;
-    MPI_Offset len;
+    MPI_Offset prev_size;
     int  dimid,err;
     int *new_indexes = (int*)NCI_Malloc(sizeof(int) * ndims);//mapping from old index to new index
     // check if total number of dimensions exceed max number allowed
@@ -309,7 +349,7 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
        if(i < old_dimarray->nread){
             //intial definition for dim read from file
             if (hdr_idx == 0){
-                err = add_dim(ncp, &dimid, hdr_data->dims.value[i]->name,hdr_data->dims.value[i]->size);
+                err = add_dim(ncp, &dimid, hdr_data->dims.value[i]->name, hdr_data->dims.value[i]->size);
                 if (err != NC_NOERR) return err;
                 //update pnc header
                 pncp->ndims++;
@@ -321,63 +361,84 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
             dimid_generator++;
             //update local-global index mapping (for variable)
             new_indexes[i] = i;
+            //record the dimid in sorted dim array
+            sort_dims[dim_sort_map[hdr_idx][i]]->global_id = dimid;
+
         }else{ //newly defined dims
             
-            err = pncp->driver->inq_dimid(ncp, hdr_data->dims.value[i]->name, &dimid);
-            if (err != NC_EBADDIM) {
-                //name matched, check property
-                if (dimid < old_dimarray->nread){
-                    //name conflict with a dim read from file, error out
-                    DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_DIM_NAME)
-                    goto err_check;
-                }
-                len = ncp->dims.value[dimid]->size;
-                if (len!= hdr_data->dims.value[i]->size){
-                    //duplicated name but different value error out
-                    DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_DIM_NAME)
-                    goto err_check;
-                }else{
-                    //a shread dimension, skip define since its read from file and already defined
-                   
-                    if (rank == hdr_idx){
-                        //maintain old local id for this dim
-                        // printf("\n old_dimarray->localids[i] %d", old_dimarray->localids[i]);
-                        int prev_localid = ncp->dims.localids[dimid];
-                        ncp->dims.localids[dimid] = old_dimarray->localids[i];
-                        //correct the local id that was previously assigned to a dim
-                        ncp->dims.localids[old_dimarray->localids[i]] = prev_localid;
-                        //update local-global index mapping (for variable)
-                        
-                        // printf("\n ncp->dims.localids[dimid] %d", ncp->dims.localids[dimid]);
-                        // printf("\n ncp->dims.localids[old_dimarray->localids[i]] %d", ncp->dims.localids[old_dimarray->localids[i]]);
-                    }
-                    new_indexes[i] = dimid;
-                    //other processes has no need to change localids at all
-                }
-            }else{
-                //new dimension, no duplicated name
+            // err = pncp->driver->inq_dimid(ncp, hdr_data->dims.value[i]->name, &dimid);
+            
 
-                err = add_dim(ncp, &dimid, hdr_data->dims.value[i]->name,hdr_data->dims.value[i]->size);
-                if (err != NC_NOERR) goto err_check;
-                pncp->ndims++;
-                
-                if (hdr_data->dims.value[i]->size == NC_UNLIMITED && pncp->unlimdimid == -1) pncp->unlimdimid = dimid;
-                new_indexes[i] = dimid;
-                
-                if (rank == hdr_idx){
-                        //maintain old local id for this dim
-                        ncp->dims.localids[dimid] = old_dimarray->localids[i];
-                        //correct the local id that was previously assigned to a dim
-                        ncp->dims.localids[old_dimarray->localids[i]] = dimid_generator++;
-                    }else{// add local ids using id from id generater
-                        ncp->dims.localids[dimid] = dimid_generator++;
+            // if (err != NC_EBADDIM) {
+            //     //name matched, check property
+            //     if (dimid < old_dimarray->nread){
+            //         //name conflict with a dim read from file, error out
+            //         DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_DIM_NAME)
+            //         goto err_check;
+            //     }
+            //     prev_size = ncp->dims.value[dimid]->size;
+            //     if (prev_size!= hdr_data->dims.value[i]->size){
+            //         //duplicated name but different value error out
+            //         DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_DIM_NAME)
+            //         goto err_check;
+            //     }else{
+            int prev_sort_id = dim_sort_map[hdr_idx][i] - 1;
+            if(prev_sort_id >= 0){
+                printf("\n prev_sort_id: %d", prev_sort_id);
+                if(compare_dim_name(hdr_data->dims.value[i], sort_dims[prev_sort_id]) == 0){
+                    if (sort_dims[prev_sort_id]->global_id < old_dimarray->nread){
+                        //name conflict with a dim read from file, error out
+                        DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_DIM_NAME)
+                        goto err_check;
                     }
+                    prev_size = sort_dims[prev_sort_id]->size;
+                    if (prev_size!= hdr_data->dims.value[i]->size){
+                        //duplicated name but different value error out
+                        DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_DIM_NAME)
+                        goto err_check;
+                    }else{
+                        //a shread dimension, skip define since already defined
+                        if (rank == hdr_idx){
+                            //maintain old local id for this dim, other processes has no need to change localids at all
+                            // printf("\n old_dimarray->localids[i] %d", old_dimarray->localids[i]);
+                            int prev_localid = ncp->dims.localids[dimid];
+                            ncp->dims.localids[dimid] = old_dimarray->localids[i];
+                            //correct the local id that was previously assigned to a dim
+                            ncp->dims.localids[old_dimarray->localids[i]] = prev_localid;
+
+                            // printf("\n ncp->dims.localids[dimid] %d", ncp->dims.localids[dimid]);
+                            // printf("\n ncp->dims.localids[old_dimarray->localids[i]] %d", ncp->dims.localids[old_dimarray->localids[i]]);
+                            }
+                        //update local-global index mapping (for variable)
+                        new_indexes[i] = dimid;
+                        //record the dimid in sorted dim array
+                        sort_dims[dim_sort_map[hdr_idx][i]]->global_id = sort_dims[prev_sort_id]->global_id;
+                        }
+
+                }else{
+                    //new dimension, no duplicated name
+                    err = add_dim(ncp, &dimid, hdr_data->dims.value[i]->name,hdr_data->dims.value[i]->size);
+                    if (err != NC_NOERR) goto err_check;
+                    pncp->ndims++;
+                    
+                    if (hdr_data->dims.value[i]->size == NC_UNLIMITED && pncp->unlimdimid == -1) pncp->unlimdimid = dimid;
+                    new_indexes[i] = dimid;
+                    //record the dimid in sorted dim array
+                   sort_dims[dim_sort_map[hdr_idx][i]]->global_id = dimid;
+                    if (rank == hdr_idx){
+                            //maintain old local id for this dim
+                            ncp->dims.localids[dimid] = old_dimarray->localids[i];
+                            //correct the local id that was previously assigned to a dim
+                            ncp->dims.localids[old_dimarray->localids[i]] = dimid_generator++;
+                        }else{// add local ids using id from id generater
+                            ncp->dims.localids[dimid] = dimid_generator++;
+                    }
+                }
             }
         }
-    }     
+    }
 
     //add variables
-
     int nvars = hdr_data->vars.ndefined;
     int cum_nvars = ncp->vars.ndefined;
     // int *varid = (int *)malloc(nvars * sizeof(int));
@@ -390,7 +451,6 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
 
     if (extra_chunk > 0){
         size_t alloc_size = (size_t) _RNDUP(tmp, NC_ARRAY_GROWBY);
-        
         ncp->vars.value = (NC_var **) NCI_Realloc(ncp->vars.value, alloc_size * sizeof(NC_var*));
         ncp->vars.localids = (int *) NCI_Realloc(ncp->vars.localids,
                                       alloc_size * SIZEOF_INT);
@@ -1603,14 +1663,52 @@ ncmpi_enddef(int ncid) {
     // pncp->ncp.dims = *ncdims;
     // pncp->ncp->vars = *ncvars;
 
+    //extract out dim array
+    int total_ndims = 0;
+    int local_ndims = 0;
+    hdr_dim ** sort_dims = NULL;
+    int **dim_sort_map = (int **)malloc(size * sizeof(int *));
+    for (int i = 0; i < size; ++i) {
+        struct hdr recv_hdr;
+        // struct hdr *recv_hdr_ptr = (struct hdr *)NCI_Malloc(sizeof(struct hdr));
+        deserialize_hdr(&recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
+        local_ndims = recv_hdr.dims.ndefined;
+        for (int j = 0; j < local_ndims; ++j){
+            // recv_hdr_ptr->dims.value[j]->rank_id = i;
+            // recv_hdr_ptr->dims.value[j]->ranklocal_id = j;
+            // recv_hdr_ptr->dims.value[j]->global_id = -99;
+            recv_hdr.dims.value[j]->rank_id = i;
+            recv_hdr.dims.value[j]->ranklocal_id = j;
+            recv_hdr.dims.value[j]->global_id = -99;
+        }
+        sort_dims = (hdr_dim **) NCI_Realloc(sort_dims, (total_ndims + local_ndims) * sizeof(hdr_dim*));
+        memcpy(sort_dims + total_ndims, recv_hdr.dims.value, local_ndims * sizeof(hdr_dim*));
+        total_ndims += local_ndims;
+        dim_sort_map[i] = (int *)malloc(local_ndims * sizeof(int));
+    }
+    //sort dim array based on customized compare function
+    qsort(sort_dims, total_ndims, sizeof(hdr_dim*), compare_dim);
+    //create mapping from rank, rank_local_id to the index in sorted array
+    for (int i = 0; i < total_ndims; ++i) {
+        dim_sort_map[sort_dims[i]->rank_id][sort_dims[i]->ranklocal_id] = i;
+        }
+    // printf("\nsort_dims[0]->ranklocal_id %d", sort_dims[0]->ranklocal_id);
+
+    
+    //start construct the combined hdr structure
     for (int i = 0; i < size; ++i) {
         struct hdr recv_hdr;
         // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
         deserialize_hdr(&recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
         // printf("\nmilestone4: %d", i);
-        err = add_hdr(&recv_hdr, i, rank, pncp, old_dimarray, old_vararray);
+        err = add_hdr(&recv_hdr, i, rank, pncp, old_dimarray, old_vararray, sort_dims, total_ndims, dim_sort_map);
         if (err != NC_NOERR) return err;
     }
+    for (int i = 0; i < size; i++) {
+        NCI_Free(dim_sort_map[i]);
+    }
+    NCI_Free(dim_sort_map);
+    NCI_Free(sort_dims);
     
     // #ifndef SEARCH_NAME_LINEARLY
     //     /* initialize and populate name lookup tables ---------------------------*/

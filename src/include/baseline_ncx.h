@@ -19,6 +19,11 @@ typedef struct {
     size_t      name_len; /* strlen(name), for faster string compare */
     // bool         shared;
     // int        global_idx; 
+    // int sort_id;
+    int rank_id;
+    int ranklocal_id;
+    int global_id;
+
     char       *name;
 } hdr_dim;
 
