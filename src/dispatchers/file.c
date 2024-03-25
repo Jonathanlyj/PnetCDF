@@ -239,6 +239,18 @@ int compare_dim_name(const hdr_dim *dim_a, const hdr_dim *dim_b) {
 }
 
 
+int compare_var_name(const hdr_var *var_a, const hdr_var *var_b) {
+    // hdr_var * var_a = *(hdr_var **)a;
+    // hdr_var * var_b = *(hdr_var **)b;
+    if (var_a->name_len < var_b->name_len) {
+        return -1;
+    } else if (var_a->name_len > var_b->name_len) {
+        return 1;
+    } else {
+        return strcmp(var_a->name, var_b->name);
+    }
+}
+
 /*META: customized dim name compare function for sort*/
 int compare_dim(const void *a, const void *b) {
     hdr_dim * dim_a = *(hdr_dim **)a;
@@ -263,10 +275,34 @@ int compare_dim(const void *a, const void *b) {
 }
 
 
+/*META: customized dim name compare function for sort*/
+int compare_var(const void *a, const void *b) {
+    hdr_var * var_a = *(hdr_var **)a;
+    hdr_var * var_b = *(hdr_var **)b;
+    int strcmp_rst = 0;
+    if (var_a->name_len < var_b->name_len) {
+        return -1;
+    } else if (var_a->name_len > var_b->name_len) {
+        return 1;
+    } else{
+        strcmp_rst = strcmp(var_a->name, var_b->name);
+        if(strcmp_rst == 0){
+            if (var_a->rank_id < var_b->rank_id) return -1;
+            if (var_a->rank_id > var_b->rank_id) return 1;
+            if (var_a->ranklocal_id < var_b->ranklocal_id) return -1;
+            if (var_a->ranklocal_id > var_b->ranklocal_id) return 1;
+            return 0;
+        }else {
+            return strcmp_rst;
+        }
+    }
+}
+
 
 
 /*META: Add metadata to header object*/
-static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const NC_dimarray* old_dimarray, const NC_vararray* old_vararray, hdr_dim** sort_dims, int ndims_tmp, int** dim_sort_map){
+static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const NC_dimarray* old_dimarray,\
+const NC_vararray* old_vararray, hdr_dim** sort_dims, int ndims_tmp, int** dim_sort_map, hdr_var** sort_vars, int nvars_tmp, int** var_sort_map){
     // NC_dimarray* ncdims, NC_vararray* ncvars
     NC *ncp=(NC*)pncp->ncp;
     //add dimensions 
@@ -362,7 +398,7 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
             //update local-global index mapping (for variable)
             new_indexes[i] = i;
             //record the dimid in sorted dim array
-            sort_dims[dim_sort_map[hdr_idx][i]]->global_id = dimid;
+            sort_dims[dim_sort_map[hdr_idx][i]]->global_id = i;
 
         }else{ //newly defined dims
             
@@ -382,16 +418,16 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
             //         DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_DIM_NAME)
             //         goto err_check;
             //     }else{
-            int prev_sort_id = dim_sort_map[hdr_idx][i] - 1;
-            if(prev_sort_id >= 0 && compare_dim_name(hdr_data->dims.value[i], sort_dims[prev_sort_id]) == 0){
-                // printf("\n prev_sort_id: %d", prev_sort_id);
-                int prev_dimid_id = sort_dims[prev_sort_id]->global_id;
+            int dim_prev_sort_id = dim_sort_map[hdr_idx][i] - 1;
+            if(dim_prev_sort_id >= 0 && compare_dim_name(hdr_data->dims.value[i], sort_dims[dim_prev_sort_id]) == 0){
+                // printf("\n dim_prev_sort_id: %d", dim_prev_sort_id);
+                int prev_dimid_id = sort_dims[dim_prev_sort_id]->global_id;
                 if (prev_dimid_id < old_dimarray->nread){
                     //name conflict with a dim read from file, error out
                     DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_DIM_NAME)
                     goto err_check;
                 }
-                prev_size = sort_dims[prev_sort_id]->size;
+                prev_size = sort_dims[dim_prev_sort_id]->size;
                 if (prev_size!= hdr_data->dims.value[i]->size){
                     //duplicated name but different value error out
                     DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_DIM_NAME)
@@ -490,26 +526,31 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
     for (i=0; i<nvars; i++){
         if(hdr_idx > 0){
             if (i < old_vararray->nread){
+                //record this varid
+                sort_vars[var_sort_map[hdr_idx][i]]->global_id = i;
                 continue;
             }else{
                 //check if name already used
-                err = pncp->driver->inq_varid(pncp->ncp, hdr_data->vars.value[i]->name, &varid);
-
-                if (err != NC_ENOTVAR){
+                // err = pncp->driver->inq_varid(pncp->ncp, hdr_data->vars.value[i]->name, &varid);
+                int var_prev_sort_id = var_sort_map[hdr_idx][i] - 1;
+                if(var_prev_sort_id >= 0 && compare_var_name(hdr_data->vars.value[i], sort_vars[var_prev_sort_id]) == 0){
+                    int prev_varid_id = sort_vars[var_prev_sort_id]->global_id;
+                // if (err != NC_ENOTVAR){
                     //same name
-                    if(varid < old_vararray->nread){
+                    if(prev_varid_id < old_vararray->nread){
                         //name conflict with a var read from file, error out
                         DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
                         goto err_check;
                     }
                     //check type and ndims
-                    nc_type old_xtype = ncp->vars.value[varid]->xtype;
-                    int old_ndims = ncp->vars.value[varid]->ndims;
+                    // nc_type old_xtype = ncp->vars.value[varid]->xtype;
+                    nc_type old_xtype =  sort_vars[var_prev_sort_id]->xtype;
+                    int old_ndims =  sort_vars[var_prev_sort_id]->ndims;
                     if (hdr_data->vars.value[i]->xtype == old_xtype && hdr_data->vars.value[i]->ndims == old_ndims){
                         //check ndimid
                         for(int k=0; k< old_ndims;k++){
-                            if (ncp->vars.value[varid]->dimids[k] != hdr_data->vars.value[i]->dimids[k]){
-                                // dimid not match
+                            if ( sort_vars[var_prev_sort_id]->dimids[k] != hdr_data->vars.value[i]->dimids[k]){
+                                // dimids not match
                                 DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
                                 goto err_check;
                             }
@@ -524,12 +565,15 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
                             */
                             //maintain old local id for this var
                             // printf("\n old_vararray->localids[i] %d", old_vararray->localids[i]);
-                            int prev_localid = ncp->vars.localids[varid];
-                            ncp->vars.localids[varid] = old_vararray->localids[i];
+
+                            int prev_localid = ncp->vars.localids[prev_varid_id];
+                            ncp->vars.localids[prev_varid_id] = old_vararray->localids[i];
                             //correct the local id that was previously assigned to a var
                             ncp->vars.localids[old_vararray->localids[i]] = prev_localid;
-                            //update local-global index mapping (for variable)
+
                         }
+                        //record this varid
+                        sort_vars[var_sort_map[hdr_idx][i]]->global_id = prev_varid_id;
                         //skip define
                         continue;
 
@@ -589,8 +633,8 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
             ncmpio_hash_insert(ncp->vars.nameT, nname, varp->varid);
             // ncmpio_hash_table_populate_NC_var(&ncp->vars);
         }
-        
-
+        //record this varid
+        sort_vars[var_sort_map[hdr_idx][i]]->global_id = varp->varid;
         
 #endif
         //Update PNC object
@@ -1664,15 +1708,20 @@ ncmpi_enddef(int ncid) {
     // pncp->ncp->vars = *ncvars;
 
     //extract out dim array
-    int total_ndims = 0;
-    int local_ndims = 0;
+    int total_ndims = 0, total_nvars = 0;
+    int local_ndims = 0, local_nvars = 0;
+    
     hdr_dim ** sort_dims = NULL;
+    hdr_var ** sort_vars = NULL;
     int **dim_sort_map = (int **)malloc(size * sizeof(int *));
+    int **var_sort_map = (int **)malloc(size * sizeof(int *));
     for (int i = 0; i < size; ++i) {
         struct hdr recv_hdr;
         // struct hdr *recv_hdr_ptr = (struct hdr *)NCI_Malloc(sizeof(struct hdr));
         deserialize_hdr(&recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
         local_ndims = recv_hdr.dims.ndefined;
+        local_nvars = recv_hdr.vars.ndefined;
+
         for (int j = 0; j < local_ndims; ++j){
             // recv_hdr_ptr->dims.value[j]->rank_id = i;
             // recv_hdr_ptr->dims.value[j]->ranklocal_id = j;
@@ -1681,11 +1730,24 @@ ncmpi_enddef(int ncid) {
             recv_hdr.dims.value[j]->ranklocal_id = j;
             recv_hdr.dims.value[j]->global_id = -99;
         }
+
+        for (int j = 0; j < local_nvars; ++j){
+            // recv_hdr_ptr->vars.value[j]->rank_id = i;
+            // recv_hdr_ptr->vars.value[j]->ranklocal_id = j;
+            // recv_hdr_ptr->vars.value[j]->global_id = -99;
+            recv_hdr.vars.value[j]->rank_id = i;
+            recv_hdr.vars.value[j]->ranklocal_id = j;
+            recv_hdr.vars.value[j]->global_id = -99;
+        }
         sort_dims = (hdr_dim **) NCI_Realloc(sort_dims, (total_ndims + local_ndims) * sizeof(hdr_dim*));
+        sort_vars = (hdr_var **) NCI_Realloc(sort_vars, (total_nvars + local_nvars) * sizeof(hdr_var*));
 
         memcpy(sort_dims + total_ndims, recv_hdr.dims.value, local_ndims * sizeof(hdr_dim*));
+        memcpy(sort_vars + total_nvars, recv_hdr.vars.value, local_nvars * sizeof(hdr_var*));
         total_ndims += local_ndims;
+        total_nvars += local_nvars;
         dim_sort_map[i] = (int *)malloc(local_ndims * sizeof(int));
+        var_sort_map[i] = (int *)malloc(local_nvars * sizeof(int));
     }
     //sort dim array based on customized compare function
     qsort(sort_dims, total_ndims, sizeof(hdr_dim*), compare_dim);
@@ -1694,7 +1756,12 @@ ncmpi_enddef(int ncid) {
         dim_sort_map[sort_dims[i]->rank_id][sort_dims[i]->ranklocal_id] = i;
         }
     // printf("\nsort_dims[0]->ranklocal_id %d", sort_dims[0]->ranklocal_id);
-
+    //sort var array based on customized compare function
+    qsort(sort_vars, total_nvars, sizeof(hdr_var*), compare_var);
+    //create mapping from rank, rank_local_id to the index in sorted array
+    for (int i = 0; i < total_nvars; ++i) {
+        var_sort_map[sort_vars[i]->rank_id][sort_vars[i]->ranklocal_id] = i;
+        }
 
     
     //start construct the combined hdr structure
@@ -1703,14 +1770,19 @@ ncmpi_enddef(int ncid) {
         // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
         deserialize_hdr(&recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
         // printf("\nmilestone4: %d", i);
-        err = add_hdr(&recv_hdr, i, rank, pncp, old_dimarray, old_vararray, sort_dims, total_ndims, dim_sort_map);
+        err = add_hdr(&recv_hdr, i, rank, pncp, old_dimarray, old_vararray, sort_dims, total_ndims, dim_sort_map, sort_vars, total_nvars, var_sort_map);
         if (err != NC_NOERR) return err;
     }
     for (int i = 0; i < size; i++) {
         NCI_Free(dim_sort_map[i]);
     }
+    for (int i = 0; i < size; i++) {
+        NCI_Free(var_sort_map[i]);
+    }
     NCI_Free(dim_sort_map);
+    NCI_Free(var_sort_map);
     NCI_Free(sort_dims);
+    NCI_Free(sort_vars);
     
     #ifndef SEARCH_NAME_LINEARLY
         /* initialize and populate name lookup tables ---------------------------*/

@@ -55,6 +55,10 @@ typedef struct {
     char         *name;    /* name of the variable */
     int           ndims;   /* number of dimensions */
     int          *dimids;  /* [ndims] array of dimension IDs */
+
+    int rank_id;
+    int ranklocal_id;
+    int global_id;
     hdr_attrarray  attrs;   /* attribute array */
 } hdr_var;
 
