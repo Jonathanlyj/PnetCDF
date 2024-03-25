@@ -211,13 +211,13 @@ static int add_dim(NC* ncp, int *dimidp, char* name, MPI_Offset size){
     // printf("\n test free here");
     // ncmpio_hash_table_free(ncp->dims.nameT);
 
-    if(ncp->dims.ndefined==1){
-        ncmpio_hash_table_populate_NC_dim(&ncp->dims);
+    // if(ncp->dims.ndefined==1){
+    //     ncmpio_hash_table_populate_NC_dim(&ncp->dims);
         
-    }else{
-        // ncmpio_hash_table_populate_NC_dim(&ncp->dims);
-        ncmpio_hash_insert(ncp->dims.nameT, nname, dimid);
-    }
+    // }else{
+    //     // ncmpio_hash_table_populate_NC_dim(&ncp->dims);
+    //     ncmpio_hash_insert(ncp->dims.nameT, nname, dimid);
+    // }
         
     #endif
 
@@ -383,56 +383,56 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
             //         goto err_check;
             //     }else{
             int prev_sort_id = dim_sort_map[hdr_idx][i] - 1;
-            if(prev_sort_id >= 0){
-                printf("\n prev_sort_id: %d", prev_sort_id);
-                if(compare_dim_name(hdr_data->dims.value[i], sort_dims[prev_sort_id]) == 0){
-                    if (sort_dims[prev_sort_id]->global_id < old_dimarray->nread){
-                        //name conflict with a dim read from file, error out
-                        DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_DIM_NAME)
-                        goto err_check;
-                    }
-                    prev_size = sort_dims[prev_sort_id]->size;
-                    if (prev_size!= hdr_data->dims.value[i]->size){
-                        //duplicated name but different value error out
-                        DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_DIM_NAME)
-                        goto err_check;
-                    }else{
-                        //a shread dimension, skip define since already defined
-                        if (rank == hdr_idx){
-                            //maintain old local id for this dim, other processes has no need to change localids at all
-                            // printf("\n old_dimarray->localids[i] %d", old_dimarray->localids[i]);
-                            int prev_localid = ncp->dims.localids[dimid];
-                            ncp->dims.localids[dimid] = old_dimarray->localids[i];
-                            //correct the local id that was previously assigned to a dim
-                            ncp->dims.localids[old_dimarray->localids[i]] = prev_localid;
-
-                            // printf("\n ncp->dims.localids[dimid] %d", ncp->dims.localids[dimid]);
-                            // printf("\n ncp->dims.localids[old_dimarray->localids[i]] %d", ncp->dims.localids[old_dimarray->localids[i]]);
-                            }
-                        //update local-global index mapping (for variable)
-                        new_indexes[i] = dimid;
-                        //record the dimid in sorted dim array
-                        sort_dims[dim_sort_map[hdr_idx][i]]->global_id = sort_dims[prev_sort_id]->global_id;
-                        }
-
+            if(prev_sort_id >= 0 && compare_dim_name(hdr_data->dims.value[i], sort_dims[prev_sort_id]) == 0){
+                // printf("\n prev_sort_id: %d", prev_sort_id);
+                int prev_dimid_id = sort_dims[prev_sort_id]->global_id;
+                if (prev_dimid_id < old_dimarray->nread){
+                    //name conflict with a dim read from file, error out
+                    DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_DIM_NAME)
+                    goto err_check;
+                }
+                prev_size = sort_dims[prev_sort_id]->size;
+                if (prev_size!= hdr_data->dims.value[i]->size){
+                    //duplicated name but different value error out
+                    DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_DIM_NAME)
+                    goto err_check;
                 }else{
-                    //new dimension, no duplicated name
-                    err = add_dim(ncp, &dimid, hdr_data->dims.value[i]->name,hdr_data->dims.value[i]->size);
-                    if (err != NC_NOERR) goto err_check;
-                    pncp->ndims++;
-                    
-                    if (hdr_data->dims.value[i]->size == NC_UNLIMITED && pncp->unlimdimid == -1) pncp->unlimdimid = dimid;
-                    new_indexes[i] = dimid;
-                    //record the dimid in sorted dim array
-                   sort_dims[dim_sort_map[hdr_idx][i]]->global_id = dimid;
+                    //a shread dimension, skip define since already defined
                     if (rank == hdr_idx){
-                            //maintain old local id for this dim
-                            ncp->dims.localids[dimid] = old_dimarray->localids[i];
-                            //correct the local id that was previously assigned to a dim
-                            ncp->dims.localids[old_dimarray->localids[i]] = dimid_generator++;
-                        }else{// add local ids using id from id generater
-                            ncp->dims.localids[dimid] = dimid_generator++;
+                        //maintain old local id for this dim, other processes has no need to change localids at all
+                        // printf("\n old_dimarray->localids[i] %d", old_dimarray->localids[i]);
+                        int prev_localid = ncp->dims.localids[prev_dimid_id];
+                        ncp->dims.localids[prev_dimid_id] = old_dimarray->localids[i];
+                        //correct the local id that was previously assigned to a dim
+                        ncp->dims.localids[old_dimarray->localids[i]] = prev_localid;
+
+                        // printf("\n ncp->dims.localids[dimid] %d", ncp->dims.localids[dimid]);
+                        // printf("\n ncp->dims.localids[old_dimarray->localids[i]] %d", ncp->dims.localids[old_dimarray->localids[i]]);
+                        }
+                    //update local-global index mapping (for variable)
+                    new_indexes[i] = prev_dimid_id;
+                    //record the dimid in sorted dim array
+                    sort_dims[dim_sort_map[hdr_idx][i]]->global_id = prev_dimid_id;
                     }
+
+            }else{
+                //new dimension, no duplicated name
+                err = add_dim(ncp, &dimid, hdr_data->dims.value[i]->name,hdr_data->dims.value[i]->size);
+                if (err != NC_NOERR) goto err_check;
+                pncp->ndims++;
+                
+                if (hdr_data->dims.value[i]->size == NC_UNLIMITED && pncp->unlimdimid == -1) pncp->unlimdimid = dimid;
+                new_indexes[i] = dimid;
+                //record the dimid in sorted dim array
+                sort_dims[dim_sort_map[hdr_idx][i]]->global_id = dimid;
+
+                if (rank == hdr_idx){
+                        //this is was from local rank, maintain its old local id for this dim
+                        ncp->dims.localids[dimid] = old_dimarray->localids[i];
+                        //correct the local id that was previously assigned to a dim
+                        ncp->dims.localids[old_dimarray->localids[i]] = dimid_generator++;
+                    }else{// add local ids using id from id generater
+                        ncp->dims.localids[dimid] = dimid_generator++;
                 }
             }
         }
@@ -1682,6 +1682,7 @@ ncmpi_enddef(int ncid) {
             recv_hdr.dims.value[j]->global_id = -99;
         }
         sort_dims = (hdr_dim **) NCI_Realloc(sort_dims, (total_ndims + local_ndims) * sizeof(hdr_dim*));
+
         memcpy(sort_dims + total_ndims, recv_hdr.dims.value, local_ndims * sizeof(hdr_dim*));
         total_ndims += local_ndims;
         dim_sort_map[i] = (int *)malloc(local_ndims * sizeof(int));
@@ -1693,6 +1694,7 @@ ncmpi_enddef(int ncid) {
         dim_sort_map[sort_dims[i]->rank_id][sort_dims[i]->ranklocal_id] = i;
         }
     // printf("\nsort_dims[0]->ranklocal_id %d", sort_dims[0]->ranklocal_id);
+
 
     
     //start construct the combined hdr structure
@@ -1710,12 +1712,12 @@ ncmpi_enddef(int ncid) {
     NCI_Free(dim_sort_map);
     NCI_Free(sort_dims);
     
-    // #ifndef SEARCH_NAME_LINEARLY
-    //     /* initialize and populate name lookup tables ---------------------------*/
-    //     ncmpio_hash_table_populate_NC_dim(&ncp->dims);
-    //     ncmpio_hash_table_populate_NC_var(&ncp->vars);
+    #ifndef SEARCH_NAME_LINEARLY
+        /* initialize and populate name lookup tables ---------------------------*/
+        ncmpio_hash_table_populate_NC_dim(&ncp->dims);
+        // ncmpio_hash_table_populate_NC_var(&ncp->vars);
 
-    // #endif
+    #endif
     //update local id to index mapping based on index to local id mapping
 
     //for (int j = 0; j < ncp->dims.ndefined; j++) ncp->dims.indexes[ncp->dims.localids[j]] = j;
