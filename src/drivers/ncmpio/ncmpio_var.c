@@ -551,7 +551,7 @@ ncmpio_inq_var(void       *ncdp,
         else
 #endif
     /*META: convert dimids(index) to local ids*/
-    int* dim_localids = malloc(varp->ndims * sizeof(int));
+    int* dim_localids = NCI_Malloc(varp->ndims * sizeof(int));
     for(int i=0; i<varp->ndims; i++) dim_localids[i] = ncp->dims.localids[varp->dimids[i]];
 
         if (varp->ndims > 0)
