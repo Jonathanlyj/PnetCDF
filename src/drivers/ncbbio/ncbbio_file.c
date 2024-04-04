@@ -197,6 +197,11 @@ ncbbio_close(void *ncdp)
      * Putlist and metadata index also needs to be cleaned up
      */
     if (ncbbp->inited) {
+        if (ncbbp->flag & NC_MODE_DEF) { /* exit define mode first */
+            err = ncbbp->ncmpio_driver->enddef(ncbbp->ncp);
+            if (status == NC_NOERR) status = err;
+        }
+
         /* Close log file */
         err = ncbbio_log_close(ncbbp, 1);
         if (status == NC_NOERR) status = err;
@@ -811,14 +816,15 @@ ncbbio_wait(void *ncdp,
      * dividing the id by 2.  We need to flush the log so new data can be read
      */
     if (num_reqs > nput || !(fIsSet(ncbbp->flag, NC_MODE_INDEP))) {
+        int *st_array = (statuses == NULL) ? NULL : (statuses + nput);
+
         /* Translate reqid to ncmpio reqid */
         for (i=nput; i<num_reqs; i++)
             req_ids[i] /= 2;
 
         /* Call ncmpio wait */
         err = ncbbp->ncmpio_driver->wait(ncbbp->ncp, num_reqs - nput,
-	                                 req_ids + nput, statuses + nput,
-					 reqMode);
+	                                 req_ids + nput, st_array, reqMode);
         if (status == NC_NOERR) status = err;
 
         /* Translate reqid back to ncbbio reqid */

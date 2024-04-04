@@ -28,7 +28,7 @@
 int ncbbio_log_create(NC_bb* ncbbp,
                       __attribute__((unused)) MPI_Info info)
 {
-    int i, rank, np, err, flag, masterrank, procname_len;
+    int rank, np, err, flag, masterrank, procname_len;
     char logbase[NC_LOG_MAX_PATH], basename[NC_LOG_MAX_PATH];
     char procname[MPI_MAX_PROCESSOR_NAME];
     char *abspath, *fname, *path, *fdir = NULL;
@@ -86,7 +86,7 @@ int ncbbio_log_create(NC_bb* ncbbp,
         logbasep = ncmpii_remove_file_system_type_prefix(ncbbp->logbase);
     }
     else {
-        i = strlen(path);
+        size_t i = strlen(path);
         fdir = (char*)NCI_Malloc((i + 1) * sizeof(char));
         strncpy(fdir, path, i + 1);
         /* Search for first '\' from the back */
@@ -362,7 +362,7 @@ int ncbbio_log_enddef(NC_bb *ncbbp)
 int ncbbio_log_close(NC_bb *ncbbp,
                      int    replay)
 {
-    int err;
+    int err, status=NC_NOERR;
     NC_bb_metadataheader* headerp;
 
 #ifdef PNETCDF_PROFILING
@@ -391,19 +391,18 @@ int ncbbio_log_close(NC_bb *ncbbp,
     /* If log file is created, flush the log */
     if (ncbbp->metalog_fd != NULL) {
         /* Commit to CDF file */
-        if (replay && (headerp->num_entries > 0 || !(fIsSet(ncbbp->flag, NC_MODE_INDEP)))) {
-            ncbbio_log_flush_core(ncbbp);
+        if (replay && (headerp->num_entries > 0 ||
+            !(fIsSet(ncbbp->flag, NC_MODE_INDEP)))) {
+            status = ncbbio_log_flush_core(ncbbp);
         }
 
-        /* Close log file */
+        /* Close metadata log file */
         err = ncbbio_sharedfile_close(ncbbp->metalog_fd);
-        if (err != NC_NOERR) {
-            return err;
-        }
+        if (status == NC_NOERR) status = err;
+
+        /* Close data log file */
         err = ncbbio_sharedfile_close(ncbbp->datalog_fd);
-        if (err != NC_NOERR) {
-            return err;
-        }
+        if (status == NC_NOERR) status = err;
 
         /* Delete log files if delete flag is set */
         if (ncbbp->hints & NC_LOG_HINT_DEL_ON_CLOSE) {
@@ -484,7 +483,7 @@ int ncbbio_log_close(NC_bb *ncbbp,
 #endif
 #endif
 
-    return NC_NOERR;
+    return status;
 }
 
 /*
