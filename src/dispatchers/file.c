@@ -248,7 +248,6 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
 
     if (extra_chunk > 0){
         size_t alloc_size = (size_t)_RNDUP(tmp, NC_ARRAY_GROWBY);
-        
         ncp->dims.value = (NC_dim **) NCI_Realloc(ncp->dims.value,
                                       alloc_size * sizeof(NC_dim*));
         ncp->dims.localids = (int *) NCI_Realloc(ncp->dims.localids,
@@ -397,7 +396,7 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
         ncp->vars.indexes = (int *) NCI_Realloc(ncp->vars.indexes,
                                     alloc_size * SIZEOF_INT);
 
-        if (ncp->vars.value == NULL)
+        if (ncp->vars.value == NULL || ncp->vars.localids == NULL || ncp->vars.indexes == NULL)
             DEBUG_RETURN_ERROR(NC_ENOMEM)
     }
 
@@ -406,6 +405,7 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
     extra_chunk =  _RNDUP(tmp, PNC_VARS_CHUNK) - _RNDUP(cum_nvars, PNC_VARS_CHUNK);
     if (extra_chunk > 0){
         size_t alloc_size = (size_t) _RNDUP(tmp, PNC_VARS_CHUNK);
+
         pncp->vars = NCI_Realloc(pncp->vars,
                                  alloc_size *sizeof(PNC_var));
     }
@@ -546,13 +546,14 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
         pncp->vars[varp->varid].xtype  = xtype;
         pncp->vars[varp->varid].recdim = -1;   /* if fixed-size variable */
         pncp->vars[varp->varid].shape  = NULL;
+        
         // printf("\n start add PNC new varaible object dimid");
             if (v_ndims > 0) {
                 if (v_dimids[0] == pncp->unlimdimid) { /* record variable */
                     pncp->vars[varp->varid].recdim = pncp->unlimdimid;
                     pncp->nrec_vars++;
                 }
-
+                // printf("\n v_ndim: %d", v_ndims);
                 pncp->vars[varp->varid].shape = (MPI_Offset*)
                                             NCI_Malloc(v_ndims * SIZEOF_MPI_OFFSET);
 
@@ -560,6 +561,7 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
                     /* obtain size of dimension i */
                     // META: cannot use the old appraoch here because ncmpio_inq_dim now convert localid to global id first
                     int original_dimid = hdr_data->vars.value[i]->dimids[dim_i];
+                    // printf("\n  hdr_data->dims.value[original_dimid]->size; %lld",hdr_data->dims.value[original_dimid]->size);
                     pncp->vars[varp->varid].shape[dim_i] = hdr_data->dims.value[original_dimid]->size;
                     // err = pncp->driver->inq_dim(pncp->ncp, v_dimids[dim_i], NULL,
                     //                             pncp->vars[varp->varid].shape+dim_i);
@@ -1462,6 +1464,7 @@ fn_exit:
 int
 ncmpi_close(int ncid)
 {
+
     int i, err;
     PNC *pncp;
 
@@ -1479,7 +1482,6 @@ ncmpi_close(int ncid)
     /* free the PNC object */
     if (pncp->comm != MPI_COMM_WORLD && pncp->comm != MPI_COMM_SELF)
         MPI_Comm_free(&pncp->comm); /* a collective call */
-
     NCI_Free(pncp->path);
     for (i=0; i<pncp->nvars; i++)
         if (pncp->vars[i].shape != NULL)
@@ -1487,7 +1489,7 @@ ncmpi_close(int ncid)
     if (pncp->vars != NULL)
         NCI_Free(pncp->vars);
     NCI_Free(pncp);
-  
+
     return err;
 }
 
@@ -1515,10 +1517,10 @@ ncmpi_enddef(int ncid) {
     else if (err != NC_NOERR) return err; /* fatal error */
 
     /* ---------------------------------------------- META: serilize local metadata to buffer----------------------------------------------*/
+    // struct hdr *local_hdr = (struct hdr *)NCI_Malloc(sizeof(struct hdr *));
     struct hdr local_hdr;
-
     err = baseline_extract_meta(pncp->ncp, &local_hdr);
-    // printf("%s\n", local_hdr.dims.value[0]->name);
+    // printf("%s\n", local_hdr->dims.value[0]->name);
     int rank, size;
     MPI_Comm_rank(pncp->comm, &rank);
     MPI_Comm_size(pncp->comm, &size);
@@ -1545,13 +1547,15 @@ ncmpi_enddef(int ncid) {
     // }
     char* send_buffer = (char*) NCI_Malloc(local_hdr.xsz);
     err = serialize_hdr(&local_hdr, send_buffer);
+
     /* ---------------------------------------------- META: Communicate metadata size----------------------------------------------*/
 
   // Phase 1: Communicate the sizes of the header structure for each process
     MPI_Offset* all_collection_sizes = (MPI_Offset*) NCI_Malloc(size * sizeof(MPI_Offset));
     int mpireturn;
+
     TRACE_COMM(MPI_Allgather)(&local_hdr.xsz, 1, MPI_OFFSET, all_collection_sizes, 1, MPI_OFFSET, pncp->comm);
-    
+
     /* ---------------------------------------------- META: Communicate metadata ----------------------------------------------*/
     // Calculate displacements for the second phase
     int* recv_displs = (int*) NCI_Malloc(size * sizeof(int));
@@ -1571,7 +1575,8 @@ ncmpi_enddef(int ncid) {
     // Phase 2: Communicate the actual header data
     // Before MPI_Allgatherv
     TRACE_COMM(MPI_Allgatherv)(send_buffer, local_hdr.xsz, MPI_BYTE, all_collections_buffer, recvcounts, recv_displs, MPI_BYTE, pncp->comm);
-
+    free_hdr_vararray(&local_hdr.vars);
+    free_hdr_dimarray(&local_hdr.dims);
   /* ---------------------------------------------- META: Deseralize metadata ----------------------------------------------*/
 
     if (err != NC_NOERR) return err;
@@ -1595,6 +1600,13 @@ ncmpi_enddef(int ncid) {
     ncmpio_free_NC_dimarray(&ncp->dims);
 
     ncmpio_free_NC_vararray(&ncp->vars);
+    //reset pncp var array object
+    for (int i=0; i<pncp->nvars; i++)
+        if (pncp->vars[i].shape != NULL)
+            NCI_Free(pncp->vars[i].shape);
+    if (pncp->vars != NULL)
+        NCI_Free(pncp->vars);
+
     pncp->ndims      = 0;
     pncp->unlimdimid = -1;
     pncp->nvars      = 0;
@@ -1608,9 +1620,13 @@ ncmpi_enddef(int ncid) {
         // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
         deserialize_hdr(&recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
         // printf("\nmilestone4: %d", i);
+       
         err = add_hdr(&recv_hdr, i, rank, pncp, old_dimarray, old_vararray);
+
         if (err != NC_NOERR) return err;
     }
+    
+    
     
     // #ifndef SEARCH_NAME_LINEARLY
     //     /* initialize and populate name lookup tables ---------------------------*/
@@ -1626,16 +1642,17 @@ ncmpi_enddef(int ncid) {
     // for (int j = 0; j < ncp->dims.ndefined; j++) printf("\n rank: %d:  %d : %d", rank, j, ncp->dims.localids[j]);
     for (int j = 0; j < ncp->dims.ndefined; j++) ncp->dims.indexes[ncp->dims.localids[j]] = j;
     for (int j = 0; j < ncp->vars.ndefined; j++) ncp->vars.indexes[ncp->vars.localids[j]] = j;
-
+    
     ncmpio_free_NC_dimarray(old_dimarray);
+
     ncmpio_free_NC_vararray(old_vararray);
+
 
 
     NCI_Free(all_collections_buffer);
     NCI_Free(send_buffer);
     NCI_Free(all_collection_sizes);
 
-    
     
 
     

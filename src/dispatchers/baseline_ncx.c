@@ -422,7 +422,7 @@ static int deserialize_attrarray(metabuffer *gbp, hdr_attrarray *ncap) {
             return -1;
         }
         for (int i = 0; i < ncap->ndefined; i++) {
-            ncap->value[i] = (hdr_attr *)malloc(sizeof(hdr_attr));
+            ncap->value[i] = (hdr_attr *)NCI_Malloc(sizeof(hdr_attr));
             if (ncap->value[i] == NULL) {
                 fprintf(stderr, "Memory allocation failed\n");
                 return -1;
@@ -589,10 +589,11 @@ void free_hdr_vararray(hdr_vararray *vars) {
 
 void free_hdr(struct hdr *header) {
     if (header != NULL) {
+        
         free_hdr_dimarray(&(header->dims));
-        // free_hdr_attrarray(&(header->attrs));
         free_hdr_vararray(&(header->vars));
-        // NCI_Free(header);
+        NCI_Free(header);
+
     }
 }
 
