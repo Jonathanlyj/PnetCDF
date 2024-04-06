@@ -213,9 +213,10 @@ ncmpio_dup_NC_vararray(NC_vararray       *ncap,
 
 #ifndef SEARCH_NAME_LINEARLY
     /* allocate hashing lookup table, if not allocated yet */
+    ncap->hash_size = ref->hash_size;
     if (ncap->nameT == NULL)
         ncap->nameT = NCI_Calloc(ncap->hash_size, sizeof(NC_nametable));
-
+    
     /* duplicate var name lookup table */
     ncmpio_hash_table_copy(ncap->nameT, ref->nameT, ncap->hash_size);
 #endif

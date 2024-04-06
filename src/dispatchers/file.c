@@ -70,32 +70,7 @@ static int ncmpi_default_create_format = NC_FORMAT_CLASSIC;
         goto err_out;                                              \
     }                                                              \
 }
-/*META: helper function*/
-static int
-NC_finddim_helper(const NC_dimarray *ncap,
-           const char        *name,  /* normalized dim name */
-           int               *dimidp)
-{
-    int i, key, dimid;
-    size_t nchars;
 
-    if (ncap->ndefined == 0) return NC_EBADDIM;
-
-    /* hash the dim name into a key for name lookup */
-    key = HASH_FUNC(name);
-
-    /* check the list using linear search */
-    nchars = strlen(name);
-    for (i=0; i<ncap->nameT[key].num; i++) {
-        dimid = ncap->nameT[key].list[i];
-        if (ncap->value[dimid]->name_len == nchars &&
-            strcmp(name, ncap->value[dimid]->name) == 0) {
-            if (dimidp != NULL) *dimidp = dimid;
-            return NC_NOERR; /* the name already exists */
-        }
-    }
-    return NC_EBADDIM; /* the name has never been used */
-}
 
 /*META: Extract metadata and save it to new header struc*/
 
@@ -212,11 +187,11 @@ static int add_dim(NC* ncp, int *dimidp, char* name, MPI_Offset size){
     // ncmpio_hash_table_free(ncp->dims.nameT);
 
     if(ncp->dims.ndefined==1){
-        ncmpio_hash_table_populate_NC_dim(&ncp->dims);
+        ncmpio_hash_table_populate_NC_dim(&ncp->dims, ncp->dims.hash_size);
         
     }else{
         // ncmpio_hash_table_populate_NC_dim(&ncp->dims);
-        ncmpio_hash_insert(ncp->dims.nameT, nname, dimid);
+        ncmpio_hash_insert(ncp->dims.nameT, ncp->dims.hash_size, nname, dimid);
     }
         
     #endif
@@ -243,11 +218,11 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
     if(hdr_idx>0) tmp = cum_ndims + (ndims - old_dimarray->nread);
     if (tmp > NC_MAX_DIMS) DEBUG_RETURN_ERROR(NC_EMAXDIMS)
     //expand dimarray size
-    size_t extra_chunk =  _RNDUP(tmp, NC_ARRAY_GROWBY) - _RNDUP(cum_ndims, NC_ARRAY_GROWBY);
+    size_t extra_chunk =  _RNDUP(tmp, PNC_ARRAY_GROWBY) - _RNDUP(cum_ndims, PNC_ARRAY_GROWBY);
     // printf("\ntmp is %d, cum_ndims is %d, ndims is %d", tmp, cum_ndims, ndims); 
 
     if (extra_chunk > 0){
-        size_t alloc_size = (size_t)_RNDUP(tmp, NC_ARRAY_GROWBY);
+        size_t alloc_size = (size_t)_RNDUP(tmp, PNC_ARRAY_GROWBY);
         ncp->dims.value = (NC_dim **) NCI_Realloc(ncp->dims.value,
                                       alloc_size * sizeof(NC_dim*));
         ncp->dims.localids = (int *) NCI_Realloc(ncp->dims.localids,
@@ -385,10 +360,10 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
     tmp = nvars + cum_nvars;
     if(hdr_idx>0) tmp = cum_ndims + (ndims - old_vararray->nread);
     //Expand NC object vararray
-    extra_chunk =  _RNDUP(tmp, NC_ARRAY_GROWBY) - _RNDUP(cum_nvars, NC_ARRAY_GROWBY);
+    extra_chunk =  _RNDUP(tmp, PNC_ARRAY_GROWBY) - _RNDUP(cum_nvars, PNC_ARRAY_GROWBY);
 
     if (extra_chunk > 0){
-        size_t alloc_size = (size_t) _RNDUP(tmp, NC_ARRAY_GROWBY);
+        size_t alloc_size = (size_t) _RNDUP(tmp, PNC_ARRAY_GROWBY);
         
         ncp->vars.value = (NC_var **) NCI_Realloc(ncp->vars.value, alloc_size * sizeof(NC_var*));
         ncp->vars.localids = (int *) NCI_Realloc(ncp->vars.localids,
@@ -524,9 +499,9 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
 #ifndef SEARCH_NAME_LINEARLY
     /* insert nname to the lookup table */
         if(ncp->vars.ndefined==1){
-            ncmpio_hash_table_populate_NC_var(&ncp->vars);
+            ncmpio_hash_table_populate_NC_var(&ncp->vars, ncp->vars.hash_size);
         }else{
-            ncmpio_hash_insert(ncp->vars.nameT, nname, varp->varid);
+            ncmpio_hash_insert(ncp->vars.nameT, ncp->vars.hash_size, nname, varp->varid);
             // ncmpio_hash_table_populate_NC_var(&ncp->vars);
         }
         
@@ -579,7 +554,7 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
         // printf("\nvariable %d: nattrs: %d", i, nattrs);
         // int *varid = (int *)malloc(nattrs * sizeof(int));
         ncp->vars.value[att_vid]->attrs.ndefined = nattrs;
-        size_t alloc_size = _RNDUP(nattrs, NC_ARRAY_GROWBY);
+        size_t alloc_size = _RNDUP(nattrs, PNC_VATTR_ARRAY_GROWBY);
         alloc_size = 0;
 
         ncp->vars.value[att_vid]->attrs.value = (NC_attr**) NCI_Calloc(alloc_size, sizeof(NC_attr*));
@@ -1590,16 +1565,18 @@ ncmpi_enddef(int ncid) {
     NC *ncp=(NC*)pncp->ncp;
     NC_dimarray *old_dimarray = NCI_Malloc(sizeof(NC_dimarray));
     NC_vararray *old_vararray = NCI_Malloc(sizeof(NC_vararray));
-
+    old_dimarray->nameT = NULL;
+    old_vararray->nameT = NULL;
     err = ncmpio_dup_NC_dimarray(old_dimarray, &ncp->dims);
     if (err != NC_NOERR) return err;
-    
-    err = ncmpio_dup_NC_vararray(old_vararray, &ncp->vars);
+
+    err = ncmpio_dup_NC_vararray(old_vararray, &ncp->vars, ncp->hash_size_attr);
     if (err != NC_NOERR) return err;
     
     ncmpio_free_NC_dimarray(&ncp->dims);
-
     ncmpio_free_NC_vararray(&ncp->vars);
+    ncp->dims.hash_size = old_dimarray->hash_size;
+    ncp->vars.hash_size = old_vararray->hash_size;
     //reset pncp var array object
     for (int i=0; i<pncp->nvars; i++)
         if (pncp->vars[i].shape != NULL)
@@ -1619,10 +1596,7 @@ ncmpi_enddef(int ncid) {
         struct hdr recv_hdr;
         // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
         deserialize_hdr(&recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
-        // printf("\nmilestone4: %d", i);
-       
         err = add_hdr(&recv_hdr, i, rank, pncp, old_dimarray, old_vararray);
-
         if (err != NC_NOERR) return err;
     }
     
@@ -1642,10 +1616,10 @@ ncmpi_enddef(int ncid) {
     // for (int j = 0; j < ncp->dims.ndefined; j++) printf("\n rank: %d:  %d : %d", rank, j, ncp->dims.localids[j]);
     for (int j = 0; j < ncp->dims.ndefined; j++) ncp->dims.indexes[ncp->dims.localids[j]] = j;
     for (int j = 0; j < ncp->vars.ndefined; j++) ncp->vars.indexes[ncp->vars.localids[j]] = j;
-    
-    ncmpio_free_NC_dimarray(old_dimarray);
 
+    ncmpio_free_NC_dimarray(old_dimarray);
     ncmpio_free_NC_vararray(old_vararray);
+
 
 
 
@@ -1653,10 +1627,6 @@ ncmpi_enddef(int ncid) {
     NCI_Free(send_buffer);
     NCI_Free(all_collection_sizes);
 
-    
-
-    
-    
 
 
     /* calling the subroutine that implements ncmpi_enddef() */
@@ -1666,7 +1636,7 @@ ncmpi_enddef(int ncid) {
 
     fClr(pncp->flag, NC_MODE_INDEP); /* default enters collective data mode */
     fClr(pncp->flag, NC_MODE_DEF);
-
+ 
     return NC_NOERR;
 }
 

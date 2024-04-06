@@ -19,7 +19,7 @@ dnl
 #include <dispatch.h>
 #include <pnc_debug.h>
 #include <common.h>
-
+#include "../drivers/ncmpio/ncmpio_NC.h"
 include(`foreach.m4')dnl
 include(`utils.m4')dnl
 dnl
@@ -349,7 +349,9 @@ APINAME($1,$2,$3,$4)(int ncid,
      */
     err = PNC_check_id(ncid, &pncp);
     if (err != NC_NOERR) return err;
-
+    /*META: convert to global id*/
+    NC *ncp=(NC*)pncp->ncp;
+    varid = ncp->vars.indexes[varid];
     err = sanity_check(pncp, varid, IO_TYPE($1), ITYPE2MPI($3), IS_COLL($4));
 
     ifelse(`$2',`m',`if (imap == NULL && stride != NULL) api_kind = API_VARS;
@@ -466,7 +468,9 @@ NAPINAME($1,$2,$3)(int                ncid,
      */
     err = PNC_check_id(ncid, &pncp);
     if (err != NC_NOERR) return err;
-
+    /*META: convert to global id*/
+    NC *ncp=(NC*)pncp->ncp;
+    varid = ncp->vars.indexes[varid];
     err = sanity_check(pncp, varid, IO_TYPE($1), ITYPE2MPI($2), IS_COLL($3));
     if (err != NC_NOERR) goto err_check;
 
@@ -615,8 +619,11 @@ MAPINAME($1,$2,$3,$4)(int                ncid,
     ifelse(`$2',`m',`if (imaps == NULL && strides != NULL) api_kind = API_VARS;
     else if (imaps == NULL && strides == NULL) api_kind = API_VARA;',
            `$2',`s',`if (strides == NULL) api_kind = API_VARA;')
-
+    /*META: convert to global id*/
+    NC *ncp=(NC*)pncp->ncp;
+    
     for (i=0; i<nvars; i++) {
+        varids[i] = ncp->vars.indexes[varids[i]];
         err = sanity_check(pncp, varids[i], IO_TYPE($1), ITYPE2MPI($3), IS_COLL($4));
         if (err != NC_NOERR) break;
 
@@ -727,7 +734,9 @@ IAPINAME($1,$2,$3)(int ncid,
     if (err != NC_NOERR) return err;
 
     if (reqid != NULL) *reqid = NC_REQ_NULL;
-
+    /*META: convert to global id*/
+    NC *ncp=(NC*)pncp->ncp;
+    varid = ncp->vars.indexes[varid];
     err = sanity_check(pncp, varid, IO_TYPE($1), ITYPE2MPI($3), 0);
     if (err != NC_NOERR) return err;
 
@@ -845,7 +854,9 @@ INAPINAME($1,$2)(int                ncid,
     if (err != NC_NOERR) return err;
 
     if (reqid != NULL) *reqid = NC_REQ_NULL;
-
+    /*META: convert to global id*/
+    NC *ncp=(NC*)pncp->ncp;
+    varid = ncp->vars.indexes[varid];
     err = sanity_check(pncp, varid, IO_TYPE($1), ITYPE2MPI($2), 0);
     if (err != NC_NOERR) return err;
 
@@ -941,6 +952,7 @@ ncmpi_$1_vard$2(int           ncid,
 {
     int err, status, reqMode=0;
     PNC *pncp;
+    
 
     /* check if ncid is valid.
      * For invalid ncid, we must return error now, as there is no way to
@@ -949,7 +961,9 @@ ncmpi_$1_vard$2(int           ncid,
      */
     err = PNC_check_id(ncid, &pncp);
     if (err != NC_NOERR) return err;
-
+    /*META: convert to global id*/
+    NC *ncp=(NC*)pncp->ncp;
+    varid = ncp->vars.indexes[varid];
     err = sanity_check(pncp, varid, IO_TYPE($1), MPI_DATATYPE_NULL, IS_COLL($2));
 
     /* when bufcount == NC_COUNT_IGNORE, buftype must be an MPI predefined datatype */

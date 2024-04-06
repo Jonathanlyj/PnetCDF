@@ -197,6 +197,7 @@ ncmpio_dup_NC_dimarray(NC_dimarray *ncap, const NC_dimarray *ref)
 
 #ifndef SEARCH_NAME_LINEARLY
     /* allocate hashing lookup table, if not allocated yet */
+    ncap->hash_size = ref->hash_size;
     if (ncap->nameT == NULL)
         ncap->nameT = NCI_Calloc(ncap->hash_size, sizeof(NC_nametable));
 
