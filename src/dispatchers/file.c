@@ -1776,8 +1776,8 @@ ncmpi_enddef(int ncid) {
     
     #ifndef SEARCH_NAME_LINEARLY
         /* initialize and populate name lookup tables ---------------------------*/
-        ncmpio_hash_table_populate_NC_dim(&ncp->dims);
-        ncmpio_hash_table_populate_NC_var(&ncp->vars);
+        ncmpio_hash_table_populate_NC_dim(&ncp->dims, ncp->dims.hash_size);
+        ncmpio_hash_table_populate_NC_var(&ncp->vars, ncp->vars.hash_size);;
 
     #endif
     //update local id to index mapping based on index to local id mapping
