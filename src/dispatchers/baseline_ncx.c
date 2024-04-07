@@ -407,10 +407,10 @@ static int deserialize_attrarray(metabuffer *gbp, hdr_attrarray *ncap) {
     unsigned int tag;
     get_uint32((void**)&gbp->pos, &tag);
     uint32_t tmp;
-
     if (tag == NC_UNSPECIFIED) {
         get_uint32((void**)&gbp->pos, &tmp);
         ncap->ndefined = (int) tmp;
+        ncap->value = NULL;
         assert(ncap->ndefined == 0);
         return 0; // ABSENT
     } else if (tag == NC_ATTRIBUTE) {
@@ -462,7 +462,7 @@ static int deserialize_var(metabuffer *gbp, hdr_var *varp) {
         get_uint32((void**)&gbp->pos, &tmp);
         varp->dimids[i] = (int)tmp;
     }
-
+    
     if (deserialize_attrarray(gbp, &varp->attrs) != 0) {
         return -1;
     }

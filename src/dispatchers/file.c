@@ -1593,10 +1593,11 @@ ncmpi_enddef(int ncid) {
     // pncp->ncp->vars = *ncvars;
 
     for (int i = 0; i < size; ++i) {
-        struct hdr recv_hdr;
+        struct hdr *recv_hdr = (struct hdr*)NCI_Malloc(sizeof(struct hdr));
         // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
-        deserialize_hdr(&recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
-        err = add_hdr(&recv_hdr, i, rank, pncp, old_dimarray, old_vararray);
+        deserialize_hdr(recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
+        err = add_hdr(recv_hdr, i, rank, pncp, old_dimarray, old_vararray);
+        free_hdr(recv_hdr);
         if (err != NC_NOERR) return err;
     }
     
@@ -1619,6 +1620,8 @@ ncmpi_enddef(int ncid) {
 
     ncmpio_free_NC_dimarray(old_dimarray);
     ncmpio_free_NC_vararray(old_vararray);
+    NCI_Free(old_vararray);
+     NCI_Free(old_dimarray);
 
 
 
