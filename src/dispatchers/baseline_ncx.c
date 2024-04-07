@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <mpi.h>
 #include <pnetcdf.h>
+#include <common.h>
 #include "baseline_ncx.h" 
 #include "../drivers/ncmpio/ncmpio_NC.h"
 
@@ -308,7 +309,7 @@ static int deserialize_nc_type(metabuffer *gbp, nc_type *xtypep){
 static int deserialize_name(metabuffer *gbp, char **name) {
     unsigned int nchars;
     get_uint32((void**)&gbp->pos, &nchars);
-    *name = (char *)malloc(nchars + 1);
+    *name = (char *)NCI_Malloc(nchars + 1);
     if (*name == NULL) {
         fprintf(stderr, "Memory allocation failed\n");
         return -1;
@@ -344,14 +345,14 @@ static int deserialize_dimarray(metabuffer *gbp, hdr_dimarray *ncap) {
     } else if (tag == NC_DIMENSION) {
         get_uint32((void**)&gbp->pos, (unsigned int *)&ncap->ndefined);
 
-        ncap->value = (hdr_dim **)malloc(ncap->ndefined * sizeof(hdr_dim *));
+        ncap->value = (hdr_dim **)NCI_Malloc(ncap->ndefined * sizeof(hdr_dim *));
         if (ncap->value == NULL) {
             fprintf(stderr, "Memory allocation failed\n");
             return -1;
         }
 
         for (int i = 0; i < ncap->ndefined; i++) {
-            ncap->value[i] = (hdr_dim *)malloc(sizeof(hdr_dim));
+            ncap->value[i] = (hdr_dim *)NCI_Malloc(sizeof(hdr_dim));
             if (ncap->value[i] == NULL) {
                 fprintf(stderr, "Memory allocation failed\n");
                 return -1;
@@ -371,7 +372,7 @@ static int deserialize_attrV(metabuffer *gbp, hdr_attr *attrp) {
     xlen_nc_type(attrp->xtype, &xsz);
     sz = attrp->nelems * xsz;
 
-    attrp->xvalue = malloc(sz);
+    attrp->xvalue = NCI_Malloc(sz);
     if (attrp->xvalue == NULL) {
         fprintf(stderr, "Memory allocation failed\n");
         return -1;
@@ -406,22 +407,22 @@ static int deserialize_attrarray(metabuffer *gbp, hdr_attrarray *ncap) {
     unsigned int tag;
     get_uint32((void**)&gbp->pos, &tag);
     uint32_t tmp;
-
     if (tag == NC_UNSPECIFIED) {
         get_uint32((void**)&gbp->pos, &tmp);
         ncap->ndefined = (int) tmp;
+        ncap->value = NULL;
         assert(ncap->ndefined == 0);
         return 0; // ABSENT
     } else if (tag == NC_ATTRIBUTE) {
         get_uint32((void**)&gbp->pos, &tmp);
         ncap->ndefined = (int) tmp;
-        ncap->value = (hdr_attr **)malloc(ncap->ndefined * sizeof(hdr_attr *));
+        ncap->value = (hdr_attr **)NCI_Malloc(ncap->ndefined * sizeof(hdr_attr *));
         if (ncap->value == NULL) {
             fprintf(stderr, "Memory allocation failed\n");
             return -1;
         }
         for (int i = 0; i < ncap->ndefined; i++) {
-            ncap->value[i] = (hdr_attr *)malloc(sizeof(hdr_attr));
+            ncap->value[i] = (hdr_attr *)NCI_Malloc(sizeof(hdr_attr));
             if (ncap->value[i] == NULL) {
                 fprintf(stderr, "Memory allocation failed\n");
                 return -1;
@@ -451,7 +452,7 @@ static int deserialize_var(metabuffer *gbp, hdr_var *varp) {
     u_int32_t tmp;
     get_uint32((void**)&gbp->pos, (unsigned int *)&tmp);
     varp->ndims = (int) tmp;
-    varp->dimids = (int *)malloc(varp->ndims * sizeof(int));
+    varp->dimids = (int *)NCI_Malloc(varp->ndims * sizeof(int));
     if (varp->dimids == NULL) {
         fprintf(stderr, "Memory allocation failed\n");
         return -1;
@@ -461,7 +462,7 @@ static int deserialize_var(metabuffer *gbp, hdr_var *varp) {
         get_uint32((void**)&gbp->pos, &tmp);
         varp->dimids[i] = (int)tmp;
     }
-
+    
     if (deserialize_attrarray(gbp, &varp->attrs) != 0) {
         return -1;
     }
@@ -485,14 +486,14 @@ static int deserialize_vararray(metabuffer *gbp, hdr_vararray *ncap) {
     } else if (tag == NC_VARIABLE) {
         get_uint32((void**)&gbp->pos, (unsigned int *)&tmp);
         ncap->ndefined = (int)tmp;
-        ncap->value = (hdr_var **)malloc(ncap->ndefined * sizeof(hdr_var *));
+        ncap->value = (hdr_var **)NCI_Malloc(ncap->ndefined * sizeof(hdr_var *));
         if (ncap->value == NULL) {
             fprintf(stderr, "Memory allocation failed\n");
             return -1;
         }
 
         for (int i = 0; i < ncap->ndefined; i++) {
-            ncap->value[i] = (hdr_var *)malloc(sizeof(hdr_var));
+            ncap->value[i] = (hdr_var *)NCI_Malloc(sizeof(hdr_var));
             if (ncap->value[i] == NULL) {
                 fprintf(stderr, "Memory allocation failed\n");
                 return -1;
@@ -531,8 +532,8 @@ int deserialize_hdr(struct hdr *ncp, void *buf, int buf_size) {
 }
 void free_hdr_dim(hdr_dim *dim) {
     if (dim != NULL) {
-        free(dim->name);
-        free(dim);
+        NCI_Free(dim->name);
+        NCI_Free(dim);
     }
 }
 
@@ -541,16 +542,16 @@ void free_hdr_dimarray(hdr_dimarray *dims) {
         for (int i = 0; i < dims->ndefined; i++) {
             free_hdr_dim(dims->value[i]);
         }
-        free(dims->value);
-        //free(dims);
+        NCI_Free(dims->value);
+        //NCI_Free(dims);
     }
 }
 
 void free_hdr_attr(hdr_attr *attr) {
     if (attr != NULL) {
-        free(attr->name);
-        free(attr->xvalue);
-        // free(attr);
+        NCI_Free(attr->name);
+        NCI_Free(attr->xvalue);
+        // NCI_Free(attr);
     }
 }
 
@@ -560,19 +561,19 @@ void free_hdr_attrarray(hdr_attrarray *attrs) {
             for (int i = 0; i < attrs->ndefined; i++) {
                 free_hdr_attr(attrs->value[i]);
             }
-            // free(attrs->value);
+            // NCI_Free(attrs->value);
             attrs->value = NULL;
-            // free(attrs);
+            // NCI_Free(attrs);
         }
     }
 }
 
 void free_hdr_var(hdr_var *var) {
     if (var != NULL) {
-        free(var->name);
-        free(var->dimids);
+        NCI_Free(var->name);
+        NCI_Free(var->dimids);
         free_hdr_attrarray(&(var->attrs));
-        free(var);
+        NCI_Free(var);
     }
 }
 
@@ -581,17 +582,18 @@ void free_hdr_vararray(hdr_vararray *vars) {
         for (int i = 0; i < vars->ndefined; i++) {
             free_hdr_var(vars->value[i]);
         }
-        free(vars->value);
-        // free(vars);
+        NCI_Free(vars->value);
+        // NCI_Free(vars);
     }
 }
 
 void free_hdr(struct hdr *header) {
     if (header != NULL) {
+        
         free_hdr_dimarray(&(header->dims));
-        // free_hdr_attrarray(&(header->attrs));
         free_hdr_vararray(&(header->vars));
-        // free(header);
+        NCI_Free(header);
+
     }
 }
 

@@ -27,10 +27,13 @@ else
    safe_modes="0"
 fi
 
+# prevent user environment setting of PNETCDF_HINTS to interfere
+unset PNETCDF_HINTS
+
 for i in ${check_PROGRAMS} ; do
     for j in ${safe_modes} ; do
         if test "$j" = 1 ; then # test only in safe mode
-           export PNETCDF_HINTS="nc_header_collective=true"
+           export PNETCDF_HINTS="romio_no_indep_rw=true"
         fi
         export PNETCDF_SAFE_MODE=$j
         # echo "set PNETCDF_SAFE_MODE ${PNETCDF_SAFE_MODE}"

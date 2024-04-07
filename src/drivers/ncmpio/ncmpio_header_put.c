@@ -80,7 +80,8 @@ hdr_put_NC_dim(bufferinfo   *pbp,
     /* copy dim_length */
     if (pbp->version < 5) {
         /* TODO: Isn't checking dimension size already done in def_dim()? */
-        if (dimp->size != (uint)dimp->size) DEBUG_RETURN_ERROR(NC_EINTOVERFLOW)
+        if (dimp->size > NC_MAX_INT)
+            DEBUG_RETURN_ERROR(NC_EINTOVERFLOW)
         err = ncmpix_put_uint32((void**)(&pbp->pos), (uint)dimp->size);
     }
     else
@@ -174,7 +175,9 @@ hdr_put_NC_attrV(bufferinfo    *pbp,
     sz = attrp->nelems * xsz;
     padding = attrp->xsz - sz;
 
-    if (sz != (size_t) sz) DEBUG_RETURN_ERROR(NC_EINTOVERFLOW)
+    if (pbp->version < 5 && sz > NC_MAX_INT)
+        DEBUG_RETURN_ERROR(NC_EINTOVERFLOW)
+
     memcpy(pbp->pos, attrp->xvalue, (size_t)sz);
     pbp->pos = (void *)((char *)pbp->pos + sz);
 
@@ -212,7 +215,7 @@ hdr_put_NC_attr(bufferinfo    *pbp,
 
     /* copy nelems */
     if (pbp->version < 5) {
-        if (attrp->nelems != (uint)attrp->nelems)
+        if (attrp->nelems  > NC_MAX_INT)
             DEBUG_RETURN_ERROR(NC_EINTOVERFLOW)
         status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)attrp->nelems);
     }
@@ -365,7 +368,8 @@ hdr_put_NC_var(bufferinfo   *pbp,
      * in CDF-2 and CDF-5, it is a 64-bit integer
      */
     if (pbp->version == 1) {
-        if (varp->begin != (uint)varp->begin) DEBUG_RETURN_ERROR(NC_EINTOVERFLOW)
+        if (varp->begin  > NC_MAX_INT)
+            DEBUG_RETURN_ERROR(NC_EINTOVERFLOW)
         status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)varp->begin);
     }
     else
@@ -446,7 +450,6 @@ ncmpio_hdr_put_NC(NC *ncp, void *buf)
     putbuf.offset        = 0;
     putbuf.pos           = buf;
     putbuf.base          = buf;
-    putbuf.size          = ncp->xsz;
     putbuf.safe_mode     = ncp->safe_mode;
     putbuf.rw_mode       = (fIsSet(ncp->flags, NC_HCOLL)) ? 1 : 0;
 
@@ -473,7 +476,8 @@ ncmpio_hdr_put_NC(NC *ncp, void *buf)
     /* copy numrecs, number of records */
     nrecs = ncp->numrecs;
     if (ncp->format < 5) {
-        if (nrecs != (uint)nrecs) DEBUG_RETURN_ERROR(NC_EINTOVERFLOW)
+        if (nrecs  > NC_MAX_INT)
+            DEBUG_RETURN_ERROR(NC_EINTOVERFLOW)
         status = ncmpix_put_uint32((void**)(&putbuf.pos), (uint)nrecs);
     }
     else {
@@ -508,6 +512,7 @@ ncmpio_hdr_put_NC(NC *ncp, void *buf)
 int ncmpio_write_header(NC *ncp)
 {
     int rank, status=NC_NOERR, mpireturn, err;
+    size_t i, ntimes;
     MPI_File fh;
     MPI_Status mpistatus;
 
@@ -527,53 +532,71 @@ int ncmpio_write_header(NC *ncp)
      * occupied by the file header */
     ncp->xsz = ncmpio_hdr_len_NC(ncp);
 
+    ntimes = ncp->xsz / NC_MAX_INT;
+    if (ncp->xsz % NC_MAX_INT) ntimes++;
+
     MPI_Comm_rank(ncp->comm, &rank);
     if (rank == 0) { /* only root writes to file header */
+        MPI_Offset offset;
+        size_t remain;
         size_t bufLen = _RNDUP(ncp->xsz, X_ALIGN);
-        void *buf = NCI_Malloc(bufLen); /* header's write buffer */
+        char *buf, *buf_ptr;
+
+        buf = NCI_Malloc(bufLen); /* header's write buffer */
 
         /* copy header object to write buffer */
         status = ncmpio_hdr_put_NC(ncp, buf);
 
-        if (ncp->xsz != (int)ncp->xsz) {
-            NCI_Free(buf);
-            DEBUG_RETURN_ERROR(NC_EINTOVERFLOW)
-        }
+        offset = 0;
+        remain = ncp->xsz;
+        buf_ptr = buf;
+        for (i=0; i<ntimes; i++) {
+            int writeLen = (int)(MIN(remain, NC_MAX_INT));
 
-#ifdef _USE_MPI_GET_COUNT
-        /* explicitly initialize mpistatus object to 0. For zero-length read,
-         * MPI_Get_count may report incorrect result for some MPICH version,
-         * due to the uninitialized MPI_Status object passed to MPI-IO calls.
-         * Thus we initialize it above to work around.
-         */
-        memset(&mpistatus, 0, sizeof(MPI_Status));
-#endif
-        if (fIsSet(ncp->flags, NC_HCOLL)) /* collective write */
-            TRACE_IO(MPI_File_write_at_all)(fh, 0, buf, (int)ncp->xsz, MPI_BYTE, &mpistatus);
-        else
-            TRACE_IO(MPI_File_write_at)(fh, 0, buf, (int)ncp->xsz, MPI_BYTE, &mpistatus);
+            /* explicitly initialize mpistatus object to 0. For zero-length
+             * read, MPI_Get_count may report incorrect result for some MPICH
+             * version, due to the uninitialized MPI_Status object passed to
+             * MPI-IO calls.  Thus we initialize it above to work around.
+             */
+            memset(&mpistatus, 0, sizeof(MPI_Status));
 
-        if (mpireturn != MPI_SUCCESS) {
-            err = ncmpii_error_mpi2nc(mpireturn, "MPI_File_write_at");
-            if (status == NC_NOERR) {
-                err = (err == NC_EFILE) ? NC_EWRITE : err;
-                DEBUG_ASSIGN_ERROR(status, err)
+            if (fIsSet(ncp->flags, NC_HCOLL)) /* collective write */
+                TRACE_IO(MPI_File_write_at_all)(fh, offset, buf_ptr, writeLen,
+                                                MPI_BYTE, &mpistatus);
+            else
+                TRACE_IO(MPI_File_write_at)(fh, offset, buf_ptr, writeLen,
+                                            MPI_BYTE, &mpistatus);
+
+            if (mpireturn != MPI_SUCCESS) {
+                err = ncmpii_error_mpi2nc(mpireturn, "MPI_File_write_at");
+                if (status == NC_NOERR) {
+                    err = (err == NC_EFILE) ? NC_EWRITE : err;
+                    DEBUG_ASSIGN_ERROR(status, err)
+                }
             }
-        }
-        else {
-#ifdef _USE_MPI_GET_COUNT
-            int put_size;
-            MPI_Get_count(&mpistatus, MPI_BYTE, &put_size);
-            ncp->put_size += put_size;
-#else
-            ncp->put_size += ncp->xsz;
-#endif
+            else {
+                /* update the number of bytes written since file open.
+                 * Because each MPI write writes no more than NC_MAX_INT,
+                 * calling MPI_Get_count() is sufficient. No need to call
+                 * MPI_Get_count_c()
+                 */
+                int put_size;
+                mpireturn = MPI_Get_count(&mpistatus, MPI_BYTE, &put_size);
+                if (mpireturn != MPI_SUCCESS || put_size == MPI_UNDEFINED)
+                    ncp->put_size += ncp->xsz;
+                else
+                    ncp->put_size += writeLen;
+            }
+            offset  += writeLen;
+            buf_ptr += writeLen;
+            remain  -= writeLen;
         }
         NCI_Free(buf);
     }
     else if (fIsSet(ncp->flags, NC_HCOLL)) { /* collective write */
         /* other processes participate the collective call */
-        TRACE_IO(MPI_File_write_at_all)(fh, 0, NULL, 0, MPI_BYTE, &mpistatus);
+        for (i=0; i<ntimes; i++)
+            TRACE_IO(MPI_File_write_at_all)(fh, 0, NULL, 0, MPI_BYTE, &mpistatus);
     }
 
     if (ncp->safe_mode == 1) {

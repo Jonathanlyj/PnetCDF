@@ -61,7 +61,6 @@ has_fortran="@has_fortran@"
 has_cxx="@has_mpicxx@"
 enable_erange_fill="@ENABLE_ERANGE_FILL@"
 enable_subfiling="@ENABLE_SUBFILING@"
-enable_large_single_req="@ENABLE_LARGE_SINGLE_REQ@"
 enable_null_byte_header_padding="@ENABLE_NULL_BYTE_HEADER_PADDING@"
 enable_relax_coord_bound="@RELAX_COORD_BOUND@"
 is_bigendian="@ac_cv_c_bigendian@"
@@ -118,7 +117,6 @@ Available values for OPTION include:
   --in-place-swap             Whether using buffer in-place Endianness byte swap
   --erange-fill               Whether using fill values for NC_ERANGE error
   --subfiling                 Whether subfiling is enabled or disabled
-  --large-single-req          Whether to allow single >2GiB MPI-IO requests
   --null-byte-header-padding  Whether to check null-byte padding in header
   --burst-buffering           Whether burst buffer driver is built or not
   --profiling                 Whether internal profiling is enabled or not
@@ -174,11 +172,6 @@ if test "x$enable_subfiling" = x1; then
         echo "  --subfiling                 -> enabled"
 else
         echo "  --subfiling                 -> disabled"
-fi
-if test "x$enable_large_single_req" = x1; then
-        echo "  --large-single-req          -> enabled"
-else
-        echo "  --large-single-req          -> disabled"
 fi
 if test "x$enable_null_byte_header_padding" = x1; then
         echo "  --null-byte-header-padding  -> enabled"
@@ -383,14 +376,6 @@ fi
 
     --subfiling)
 if test "x$enable_subfiling" = x1; then
-        echo "enabled"
-else
-        echo "disabled"
-fi
-        ;;
-
-    --large-single-req)
-if test "x$enable_large_single_req" = x1; then
         echo "enabled"
 else
         echo "disabled"

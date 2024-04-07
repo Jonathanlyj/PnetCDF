@@ -26,10 +26,16 @@ endif
 
 TESTPROGRAMS = large_files \
                large_var \
+               large_attr \
                large_dims_vars_attrs \
                high_dim_var \
                tst_cdf5_begin \
-               large_coalesce
+               tst_hash_large_ndims \
+               tst_hash_large_nvars \
+               tst_hash_large_ngattrs \
+               large_coalesce \
+               large_header \
+               large_reqs
 
 if HAS_FORTRAN
    TESTPROGRAMS += bigrecords

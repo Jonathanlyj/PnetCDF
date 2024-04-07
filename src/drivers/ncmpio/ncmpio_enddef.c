@@ -35,25 +35,34 @@
 /*----< move_file_block() >--------------------------------------------------*/
 static int
 move_file_block(NC         *ncp,
-                MPI_Offset  to,
-                MPI_Offset  from,
-                MPI_Offset  nbytes)
+                MPI_Offset  to,     /* destination file starting offset */
+                MPI_Offset  from,   /* source file starting offset */
+                MPI_Offset  nbytes) /* amount to be moved */
 {
     int rank, nprocs, bufcount, mpireturn, err, status=NC_NOERR, min_st;
     void *buf;
-    int chunk_size=1048576; /* move 1 MB per process at a time */
+    size_t chunk_size;
     MPI_Status mpistatus;
 
     MPI_Comm_size(ncp->comm, &nprocs);
     MPI_Comm_rank(ncp->comm, &rank);
 
-    /* if the file striping unit size is known (obtained from MPI-IO), then
-     * we use that instead of 1 MB */
-    if (ncp->striping_unit > 0) chunk_size = ncp->striping_unit;
+    /* Divide amount nbytes among all processes. If the divided amount,
+     * chunk_size, is larger then MOVE_UNIT, set chunk_size to be the move unit
+     * size per process (make sure it is <= NC_MAX_INT, as MPI read/write APIs
+     * use 4-byte int in their count argument.)
+     */
+#define MOVE_UNIT 67108864
+    chunk_size = nbytes / nprocs;
+    if (nbytes % nprocs) chunk_size++;
+    if (chunk_size > MOVE_UNIT) {
+        /* move data in multiple rounds, MOVE_UNIT per process at a time */
+        chunk_size = MOVE_UNIT;
+    }
 
     /* buf will be used as a temporal buffer to move data in chunks, i.e.
      * read a chunk and later write to the new location */
-    buf = NCI_Malloc((size_t)chunk_size);
+    buf = NCI_Malloc(chunk_size);
     if (buf == NULL) DEBUG_RETURN_ERROR(NC_ENOMEM)
 
     /* make fileview entire file visible */
@@ -64,14 +73,17 @@ move_file_block(NC         *ncp,
     while (nbytes > 0) {
         int get_size=0;
 
-        /* calculate how much to move at each time */
-        bufcount = chunk_size;
+        /* calculate how much to move at each time. chunk_size has been
+         * checked, must be < NC_MAX_INT
+         */
+        bufcount = (int)chunk_size;
         if (nbytes < (MPI_Offset)nprocs * chunk_size) {
             /* handle the last group of chunks */
             MPI_Offset rem_chunks = nbytes / chunk_size;
             if (rank > rem_chunks) /* these processes do not read/write */
                 bufcount = 0;
             else if (rank == rem_chunks) /* this process reads/writes less */
+                /* make bufcount < chunk_size */
                 bufcount = (int)(nbytes % chunk_size);
             nbytes = 0;
         }
@@ -93,6 +105,7 @@ move_file_block(NC         *ncp,
         if (mpireturn != MPI_SUCCESS) {
             err = ncmpii_error_mpi2nc(mpireturn, "MPI_File_read_at_all");
             if (err == NC_EFILE) DEBUG_ASSIGN_ERROR(status, NC_EREAD)
+            get_size = bufcount;
         }
         else {
             /* for zero-length read, MPI_Get_count may report incorrect result
@@ -105,6 +118,11 @@ move_file_block(NC         *ncp,
              * read from a file may be less than bufcount. Because we are
              * moving whatever read to a new file offset, we must use the
              * amount actually read to call MPI_File_write_at_all below.
+             *
+             * Update the number of bytes read since file open.
+             * Because each rank reads and writes no more than one chunk_size
+             * at a time and chunk_size is < NC_MAX_INT, it is OK to call
+             * MPI_Get_count, instead of MPI_Get_count_c.
              */
             MPI_Get_count(&mpistatus, MPI_BYTE, &get_size);
             ncp->get_size += get_size;
@@ -133,30 +151,34 @@ move_file_block(NC         *ncp,
          * bufcount for write. Note that the latter will write the variables
          * that have not been written before. Below uses the former option.
          */
-#ifdef _USE_MPI_GET_COUNT
+
         /* explicitly initialize mpistatus object to 0. For zero-length read,
          * MPI_Get_count may report incorrect result for some MPICH version,
          * due to the uninitialized MPI_Status object passed to MPI-IO calls.
          * Thus we initialize it above to work around.
          */
         memset(&mpistatus, 0, sizeof(MPI_Status));
-#endif
+
         TRACE_IO(MPI_File_write_at_all)(ncp->collective_fh,
                                         to+nbytes+rank*chunk_size,
-                                        buf, get_size /* bufcount */,
+                                        buf, get_size /* NOT bufcount */,
                                         MPI_BYTE, &mpistatus);
         if (mpireturn != MPI_SUCCESS) {
             err = ncmpii_error_mpi2nc(mpireturn, "MPI_File_write_at_all");
             if (err == NC_EFILE) DEBUG_ASSIGN_ERROR(status, NC_EWRITE)
         }
         else {
-#ifdef _USE_MPI_GET_COUNT
+            /* update the number of bytes written since file open.
+             * Because each rank reads and writes no more than one chunk_size
+             * at a time and chunk_size is < NC_MAX_INT, it is OK to call
+             * MPI_Get_count, instead of MPI_Get_count_c.
+             */
             int put_size;
-            MPI_Get_count(&mpistatus, MPI_BYTE, &put_size);
-            ncp->put_size += put_size;
-#else
-            ncp->put_size += get_size; /* or bufcount */
-#endif
+            mpireturn = MPI_Get_count(&mpistatus, MPI_BYTE, &put_size);
+            if (mpireturn != MPI_SUCCESS || put_size == MPI_UNDEFINED)
+                ncp->put_size += get_size; /* or bufcount */
+            else
+                ncp->put_size += put_size;
         }
         TRACE_COMM(MPI_Allreduce)(&status, &min_st, 1, MPI_INT, MPI_MIN, ncp->comm);
         status = min_st;
@@ -260,7 +282,7 @@ NC_begins(NC *ncp)
         }
 
         err = NC_NOERR;
-        if (root_xsz != ncp->xsz) err = NC_EMULTIDEFINE;
+        if (root_xsz != ncp->xsz) DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE)
 
         /* find min error code across processes */
         TRACE_COMM(MPI_Allreduce)(&err, &status, 1, MPI_INT, MPI_MIN,ncp->comm);
@@ -296,10 +318,13 @@ NC_begins(NC *ncp)
     }
 
     /* ncp->begin_var is the aligned starting file offset of the first
-       variable, also the extent of file header */
+     * variable (also data section), which is the extent of file header
+     * (header section). File extent may contain free space for header to grow.
+     */
 
     /* Now calculate the starting file offsets for all variables.
-       loop thru vars, first pass is for the 'non-record' vars */
+     * loop thru vars, first pass is for the 'non-record' vars
+     */
     end_var = ncp->begin_var;
     for (j=0, i=0; i<ncp->vars.ndefined; i++) {
         /* skip record variables on this pass */
@@ -308,13 +333,11 @@ NC_begins(NC *ncp)
         if (first_var == NULL) first_var = ncp->vars.value[i];
 
         /* for CDF-1 check if over the file size limit 32-bit integer */
-        if (ncp->format == 1 && end_var > X_OFF_MAX)
+        if (ncp->format == 1 && end_var > NC_MAX_INT)
             DEBUG_RETURN_ERROR(NC_EVARSIZE)
 
-        /* this will pad out non-record variables with zero to the
-         * requested alignment.  record variables are a bit trickier.
-         * we don't do anything special with them */
-        ncp->vars.value[i]->begin = D_RNDUP(end_var, ncp->fx_v_align);
+        /* this will pad out non-record variables with the 4-byte alignment */
+        ncp->vars.value[i]->begin = D_RNDUP(end_var, 4);
 
         if (ncp->old != NULL) {
             /* move to the next fixed variable */
@@ -336,19 +359,14 @@ NC_begins(NC *ncp)
 
     /* end_var now is pointing to the end of last non-record variable */
 
-    /* only (re)calculate begin_rec if there is not sufficient
-     * space at end of non-record variables or if start of record
-     * variables is not aligned as requested by ncp->r_align.
-     * If the existing begin_rec is already >= index, then leave the
-     * begin_rec as is (in case some non-record variables are deleted)
+    /* only (re)calculate begin_rec if there is no sufficient space at end of
+     * non-record variables or if the start of record variables is not aligned
+     * as requested by ncp->r_align.
      */
-    if (ncp->begin_rec < end_var ||
-        ncp->begin_rec != D_RNDUP(ncp->begin_rec, ncp->fx_v_align))
-        ncp->begin_rec = D_RNDUP(end_var, ncp->fx_v_align);
-
-    /* expand free space for fixed variable section */
     if (ncp->begin_rec < end_var + ncp->v_minfree)
-        ncp->begin_rec = D_RNDUP(end_var + ncp->v_minfree, ncp->fx_v_align);
+        ncp->begin_rec = end_var + ncp->v_minfree;
+
+    ncp->begin_rec = D_RNDUP(ncp->begin_rec, 4);
 
     /* align the starting offset for record variable section */
     if (ncp->r_align > 1)
@@ -370,7 +388,9 @@ NC_begins(NC *ncp)
 
     ncp->recsize = 0;
 
-    /* TODO: alignment for record variables (maybe using a new hint) */
+    /* The alignment is only applicable to the section of record variables,
+     * rather than individual record variables.
+     */
 
     /* loop thru vars, second pass is for the 'record' vars,
      * re-calculate the starting offset for each record variable */
@@ -379,8 +399,8 @@ NC_begins(NC *ncp)
             /* skip non-record variables on this pass */
             continue;
 
-        /* X_OFF_MAX is the max of 32-bit integer */
-        if (ncp->format == 1 && end_var > X_OFF_MAX)
+        /* NC_MAX_INT is the max of 32-bit integer */
+        if (ncp->format == 1 && end_var > NC_MAX_INT)
             DEBUG_RETURN_ERROR(NC_EVARSIZE)
 
         /* A few attempts at aligning record variables have failed
@@ -406,7 +426,7 @@ NC_begins(NC *ncp)
 
         /* check if record size must fit in 32-bits (for CDF-1) */
 #if SIZEOF_OFF_T == SIZEOF_SIZE_T && SIZEOF_SIZE_T == 4
-        if (ncp->recsize > X_UINT_MAX - ncp->vars.value[i]->len)
+        if (ncp->recsize > NC_MAX_UINT - ncp->vars.value[i]->len)
             DEBUG_RETURN_ERROR(NC_EVARSIZE)
 #endif
         ncp->recsize += ncp->vars.value[i]->len;
@@ -457,37 +477,57 @@ NC_begins(NC *ncp)
 static int
 write_NC(NC *ncp)
 {
-    void *buf=NULL;
-    int status=NC_NOERR, mpireturn, err, rank, header_wlen;
-    size_t bufLen;
+    int status=NC_NOERR, mpireturn, err, rank;
+    MPI_Offset i, header_wlen, ntimes;
     MPI_Status mpistatus;
 
     assert(!NC_readonly(ncp));
 
-    if (ncp->begin_var > X_INT_MAX) /* a fatal error */
-        DEBUG_RETURN_ERROR(NC_EINTOVERFLOW)
-
     MPI_Comm_rank(ncp->comm, &rank);
+
+    /* In NC_begins(), root's ncp->xsz and ncp->begin_var, root's header
+     * size and extent, have been broadcast (sync-ed) among processes.
+     */
+
+#ifdef ENABLE_NULL_BYTE_HEADER_PADDING
+    /* NetCDF classic file formats require the file header null-byte padded.
+     * PnetCDF's default is not to write the padding area (between ncp->xsz and
+     * ncp->begin_var). When this padding feature is enabled, we write the
+     * padding area only when writing the header the first time, i.e. creating
+     * a new file, or the new header extent becomes larger than the old one.
+     */
+    if (ncp->old == NULL || ncp->begin_var > ncp->old->begin_var)
+        header_wlen = ncp->begin_var;
+    else
+        header_wlen = ncp->xsz;
+#else
+    /* Do not write padding area (between ncp->xsz and ncp->begin_var) */
+    header_wlen = ncp->xsz;
+#endif
+
+    header_wlen = _RNDUP(header_wlen, X_ALIGN);
+
+    /* if header_wlen is > NC_MAX_INT, then write the header in chunks.
+     * Note reading file header is already done in chunks. See
+     * ncmpio_hdr_get_NC().
+     */
+    ntimes = header_wlen / NC_MAX_INT;
+    if (header_wlen % NC_MAX_INT) ntimes++;
 
     /* only rank 0's header gets written to the file */
     if (rank == 0) {
+        char *buf=NULL, *buf_ptr;
+        MPI_Offset offset, remain;
 
-        /* In NC_begins(), root's ncp->xsz and ncp->begin_var, root's header
-         * size and extent, have been broadcast (sync-ed) among processes.
-         */
 #ifdef ENABLE_NULL_BYTE_HEADER_PADDING
         /* NetCDF classic file formats require the file header null-byte
          * padded. Thus we must calloc a buffer of size equal to file header
          * extent.
          */
-        header_wlen = (int) ncp->begin_var;
-        bufLen = _RNDUP(header_wlen, X_ALIGN);
-        buf = NCI_Calloc(bufLen, 1);
+        buf = (char*)NCI_Calloc(header_wlen, 1);
 #else
         /* Do not write padding area (between ncp->xsz and ncp->begin_var) */
-        header_wlen = (int) ncp->xsz;
-        bufLen = _RNDUP(header_wlen, X_ALIGN);
-        buf = NCI_Malloc(bufLen);
+        buf = (char*)NCI_Malloc(header_wlen);
 #endif
 
         /* copy the entire local header object to buf */
@@ -501,47 +541,56 @@ write_NC(NC *ncp)
 
         /* rank 0's fileview already includes the file header */
 
-#ifdef _USE_MPI_GET_COUNT
         /* explicitly initialize mpistatus object to 0. For zero-length read,
          * MPI_Get_count may report incorrect result for some MPICH version,
          * due to the uninitialized MPI_Status object passed to MPI-IO calls.
          * Thus we initialize it above to work around.
          */
         memset(&mpistatus, 0, sizeof(MPI_Status));
-#endif
-        /* write the header extent, not just header size, because NetCDF file
-         * format specification requires null byte padding for header.
-         */
-        if (fIsSet(ncp->flags, NC_HCOLL))
-            TRACE_IO(MPI_File_write_at_all)(ncp->collective_fh, 0, buf,
-                                            header_wlen, MPI_BYTE, &mpistatus);
-        else
-            TRACE_IO(MPI_File_write_at)(ncp->collective_fh, 0, buf,
-                                        header_wlen, MPI_BYTE, &mpistatus);
-        if (mpireturn != MPI_SUCCESS) {
-            err = ncmpii_error_mpi2nc(mpireturn, "MPI_File_write_at");
-            /* write has failed, which is more serious than inconsistency */
-            if (err == NC_EFILE) DEBUG_ASSIGN_ERROR(status, NC_EWRITE)
+
+        /* write the header in chunks */
+        offset = 0;
+        remain = header_wlen;
+        buf_ptr = buf;
+        for (i=0; i<ntimes; i++) {
+            int bufCount = (int) MIN(remain, NC_MAX_INT);
+            if (fIsSet(ncp->flags, NC_HCOLL))
+                TRACE_IO(MPI_File_write_at_all)(ncp->collective_fh, offset, buf_ptr,
+                                                bufCount, MPI_BYTE, &mpistatus);
+            else
+                TRACE_IO(MPI_File_write_at)(ncp->collective_fh, offset, buf_ptr,
+                                            bufCount, MPI_BYTE, &mpistatus);
+            if (mpireturn != MPI_SUCCESS) {
+                err = ncmpii_error_mpi2nc(mpireturn, "MPI_File_write_at");
+                /* write has failed, which is more serious than inconsistency */
+                if (err == NC_EFILE) DEBUG_ASSIGN_ERROR(status, NC_EWRITE)
+            }
+            else {
+                /* Update the number of bytes read since file open.
+                 * Because each rank writes no more than NC_MAX_INT at a time,
+                 * it is OK to call MPI_Get_count, instead of MPI_Get_count_c.
+                 */
+                int put_size;
+                mpireturn = MPI_Get_count(&mpistatus, MPI_BYTE, &put_size);
+                if (mpireturn != MPI_SUCCESS || put_size == MPI_UNDEFINED)
+                    ncp->put_size += bufCount;
+                else
+                    ncp->put_size += put_size;
+            }
+            offset  += bufCount;
+            buf_ptr += bufCount;
+            remain  -= bufCount;
         }
-        else {
-#ifdef _USE_MPI_GET_COUNT
-            int put_size;
-            MPI_Get_count(&mpistatus, MPI_BYTE, &put_size);
-            ncp->put_size += put_size;
-#else
-            ncp->put_size += header_wlen;
-#endif
-        }
+        NCI_Free(buf);
     }
     else if (fIsSet(ncp->flags, NC_HCOLL)) {
         /* other processes participate the collective call */
-        TRACE_IO(MPI_File_write_at_all)(ncp->collective_fh, 0, NULL,
-                                        0, MPI_BYTE, &mpistatus);
+        for (i=0; i<ntimes; i++)
+            TRACE_IO(MPI_File_write_at_all)(ncp->collective_fh, 0, NULL,
+                                            0, MPI_BYTE, &mpistatus);
     }
 
 fn_exit:
-    if (buf != NULL) NCI_Free(buf);
-
     if (ncp->safe_mode == 1) {
         /* broadcast root's status, because only root writes to the file */
         int root_status = status;
@@ -621,11 +670,11 @@ ncmpio_NC_check_vlens(NC *ncp)
        2 and 5. */
 
     if (ncp->format >= 5) /* CDF-5 format max */
-        vlen_max = X_INT64_MAX - 3; /* "- 3" handles rounded-up size */
+        vlen_max = NC_MAX_INT64 - 3; /* "- 3" handles rounded-up size */
     else if (ncp->format == 2) /* CDF2 format */
-        vlen_max = X_UINT_MAX  - 3; /* "- 3" handles rounded-up size */
+        vlen_max = NC_MAX_UINT  - 3; /* "- 3" handles rounded-up size */
     else
-        vlen_max = X_INT_MAX   - 3; /* CDF1 format */
+        vlen_max = NC_MAX_INT   - 3; /* CDF1 format */
 
     /* Loop through vars, first pass is for non-record variables */
     large_fix_vars_count = 0;
@@ -921,11 +970,13 @@ check_rec_var:
 
 /*----< ncmpio__enddef() >---------------------------------------------------*/
 /* This is a collective subroutine.
- * h_minfree  Sets the pad at the end of the "header" section.
+ * h_minfree  Sets the pad at the end of the "header" section, i.e. at least
+ *            this amount of free space includes at the end of header extent.
  * v_align    Controls the alignment of the beginning of the data section for
  *            fixed size variables.
  * v_minfree  Sets the pad at the end of the data section for fixed size
- *            variables.
+ *            variables, i.e. at least this amount of free space between the
+ *            fixed-size variable section and record variable section.
  * r_align    Controls the alignment of the beginning of the data section for
  *            variables which have an unlimited dimension (record variables).
  */
@@ -936,89 +987,93 @@ ncmpio__enddef(void       *ncdp,
                MPI_Offset  v_minfree,
                MPI_Offset  r_align)
 {
-    int i, flag, striping_unit, mpireturn, err=NC_NOERR, status=NC_NOERR;
+    int i, num_fix_vars, mpireturn, err=NC_NOERR, status=NC_NOERR;
     char value[MPI_MAX_INFO_VAL];
-    MPI_Offset all_fix_var_size;
     NC *ncp = (NC*)ncdp;
+
+    /* negative values of h_minfree, v_align, v_minfree, r_align have been
+     * checked at dispatchers.
+     */
 
     /* sanity check for NC_ENOTINDEFINE, NC_EINVAL, NC_EMULTIDEFINE_FNC_ARGS
      * has been done at dispatchers */
     ncp->h_minfree = h_minfree;
     ncp->v_minfree = v_minfree;
 
-    /* calculate a good align size for PnetCDF level hints:
-     * header_align_size and var_align_size based on the MPI-IO hint
-     * striping_unit. This hint can be either supplied by the user or obtained
-     * from MPI-IO (for example, ROMIO's Lustre driver makes a system call to
-     * get the striping parameters of a file).
+    /* calculate a good file extent alignment size based on:
+     *     + hints set by users in the environment variable PNETCDF_HINTS
+     *       nc_header_align_size and nc_var_align_size
+     *     + v_align set in the call to ncmpi__enddef()
+     * Hints set in the environment variable PNETCDF_HINTS have the higher
+     * precedence than the ones set in the API calls.
+     * The precedence of hints and arguments:
+     * 1. hints set in PNETCDF_HINTS environment variable at run time
+     * 2. hints set in the source codes, for example, a call to
+     *    MPI_Info_set("nc_header_align_size", "1048576");
+     * 3. source codes calling ncmpi__enddef(). For example,
+     *    MPI_Offset v_align = 1048576;
+     *    ncmpi__enddef(ncid, 0, v_align, 0, 0);
+     * 4. defaults
+     *       0   for h_minfree
+     *       512 for v_align
+     *       0   for v_minfree
+     *       4   for r_align
      */
-    MPI_Info_get(ncp->mpiinfo, "striping_unit", MPI_MAX_INFO_VAL-1, value,
-                 &flag);
-    striping_unit = 0;
-    if (flag) {
-        errno = 0;
-        striping_unit = (int)strtol(value,NULL,10);
-        if (errno != 0) striping_unit = 0;
-    }
-    ncp->striping_unit = striping_unit;
-
-    all_fix_var_size = 0;  /* sum of all defined fixed-size variables */
-    for (i=0; i<ncp->vars.ndefined; i++) {
-        if (IS_RECVAR(ncp->vars.value[i])) continue;
-        all_fix_var_size += ncp->vars.value[i]->len;
-    }
 
     /* ncp->h_align, ncp->v_align, ncp->r_align, and ncp->chunk have been
      * set during file create/open */
 
-    if (ncp->h_align == 0) { /* user info does not set nc_header_align_size */
-        if (v_align > 0)
+    num_fix_vars = ncp->vars.ndefined - ncp->vars.num_rec_vars;
+
+    /* reset to hints set at file create/open time */
+    ncp->h_align = ncp->env_h_align;
+    ncp->v_align = ncp->env_v_align;
+    ncp->r_align = ncp->env_r_align;
+
+    if (ncp->h_align == 0) {   /* hint nc_header_align_size is not set */
+        if (ncp->v_align > 0)  /* hint nc_var_align_size is set */
+            ncp->h_align = ncp->v_align;
+        else if (v_align > 0)  /* v_align is passed from ncmpi__enddef */
             ncp->h_align = v_align;
-        else if (all_fix_var_size > 0 && r_align > 0) /* no fixed-size variable */
-            ncp->h_align = r_align;
-        else if (striping_unit &&
-            all_fix_var_size > FILE_ALIGNMENT_LB * striping_unit)
-            /* if striping_unit is available and file size sufficiently large */
-            ncp->h_align = striping_unit;
-        else
+
+        /* if no fixed-size variables is defined, use r_align */
+        if (ncp->h_align == 0 && num_fix_vars == 0) {
+            if (ncp->r_align > 0)  /* hint nc_record_align_size is set */
+                ncp->h_align = ncp->r_align;
+            else if (r_align > 0)  /* r_align is passed from ncmpi__enddef */
+                ncp->h_align = r_align;
+        }
+
+        if (ncp->h_align == 0 && ncp->old == NULL)
+            /* h_align is still not set. Set h_align only when creating a new
+             * file. When opening an existing file file, setting h_align here
+             * may unexpectedly grow the file extent.
+             */
             ncp->h_align = FILE_ALIGNMENT_DEFAULT;
     }
     /* else respect user hint */
 
     if (ncp->v_align == 0) { /* user info does not set nc_var_align_size */
-        if (v_align > 0) /* else respect user hint */
+        if (v_align > 0)     /* v_align is passed from ncmpi__enddef */
             ncp->v_align = v_align;
-#ifdef USE_AGGRESSIVE_ALIGN
-        else if (striping_unit &&
-                 all_fix_var_size > FILE_ALIGNMENT_LB * striping_unit)
-            /* if striping_unit is available and file size sufficiently large */
-            ncp->v_align = striping_unit;
-        else
-            ncp->v_align = FILE_ALIGNMENT_DEFAULT;
-#endif
+        /* else ncp->v_align is already set by user/env, ignore the one passed
+         * by the argument v_align of this subroutine.
+         */
     }
 
-    if (ncp->r_align == 0) { /* user info/env does not set nc_record_align_size */
-        if (r_align > 0) /* else respect user hint */
+    if (ncp->r_align == 0) { /* user info does not set nc_record_align_size */
+        if (r_align > 0)     /* r_align is passed from ncmpi__enddef */
             ncp->r_align = r_align;
-#ifdef USE_AGGRESSIVE_ALIGN
-        if (striping_unit)
-            ncp->r_align = striping_unit;
-        else
-            ncp->r_align = FILE_ALIGNMENT_DEFAULT;
-#endif
+        /* else ncp->r_align is already set by user/env, ignore the one passed
+         * by the argument r_align of this subroutine.
+         */
     }
-    /* else ncp->r_align is already set by user/env, ignore the one passed by
-     * the argument r_align of this subroutine.
-     */
 
     /* all CDF formats require 4-bytes alignment */
     if (ncp->h_align == 0)    ncp->h_align = 4;
     else                      ncp->h_align = D_RNDUP(ncp->h_align, 4);
     if (ncp->v_align == 0)    ncp->v_align = 4;
     else                      ncp->v_align = D_RNDUP(ncp->v_align, 4);
-    if (ncp->fx_v_align == 0) ncp->fx_v_align = 4;
-    else                      ncp->fx_v_align = D_RNDUP(ncp->fx_v_align, 4);
     if (ncp->r_align == 0)    ncp->r_align = 4;
     else                      ncp->r_align = D_RNDUP(ncp->r_align, 4);
 
@@ -1027,15 +1082,10 @@ ncmpio__enddef(void       *ncdp,
      */
     sprintf(value, "%lld", ncp->h_align);
     MPI_Info_set(ncp->mpiinfo, "nc_header_align_size", value);
-    sprintf(value, "%lld", ncp->fx_v_align);
+    sprintf(value, "%lld", ncp->v_align);
     MPI_Info_set(ncp->mpiinfo, "nc_var_align_size", value);
     sprintf(value, "%lld", ncp->r_align);
     MPI_Info_set(ncp->mpiinfo, "nc_record_align_size", value);
-
-    if (fIsSet(ncp->flags, NC_HCOLL))
-        MPI_Info_set(ncp->mpiinfo, "nc_header_collective", "true");
-    else
-        MPI_Info_set(ncp->mpiinfo, "nc_header_collective", "false");
 
 #ifdef ENABLE_SUBFILING
     sprintf(value, "%d", ncp->num_subfiles);

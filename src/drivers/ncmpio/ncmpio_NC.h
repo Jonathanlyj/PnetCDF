@@ -33,20 +33,26 @@
 
 /* XXX: this seems really low.  do we end up spending a ton of time mallocing?
  * could we reduce that by increasing this to something 21st century? */
-#ifndef NC_ARRAY_GROWBY
-#define NC_ARRAY_GROWBY 64
-#endif
+#define PNC_ARRAY_GROWBY 64
+
+/* The number of attributes per variable is usually small. Thus a smaller
+ * growby can converse memory, particularly when the number of variables is
+ * large and the number of attributes per variable is small.
+ * This does not apply for global attributes, which are usually a lot more.
+ * PNC_ARRAY_GROWBY is used for global attributes.
+ */
+#define PNC_VATTR_ARRAY_GROWBY 4
 
 /* ncmpi_create/ncmpi_open set up header to be 'chunksize' big and to grow
  * by 'chunksize' as new items added. This used to be 4k. 256k lets us read
  * in an entire climate header in one go */
-#define NC_DEFAULT_CHUNKSIZE 262144
+#define PNC_DEFAULT_CHUNKSIZE 262144
 
 /* default size of temporal buffer to pack noncontiguous user buffers for MPI
  * collective read and write during ncmpi_wait/wait_all(). On some systems,
  * e.g. Cray KNL, using contiguous user buffers in collective I/O is much
  * faster than noncontiguous. */
-#define NC_DEFAULT_IBUF_SIZE 16777216
+#define PNC_DEFAULT_IBUF_SIZE 16777216
 
 /* when variable's nctype is NC_CHAR, I/O buffer's MPI type must be MPI_CHAR
  * and vice versa */
@@ -89,29 +95,40 @@ typedef enum {
 
 typedef struct NC NC; /* forward reference */
 
-#define NC_NAME_TABLE_CHUNK 16
-#define HASH_TABLE_SIZE 256
+/* Default hash table sizes.
+ * They can be user customized by PnetCDF hints: nc_hash_size_dim,
+ * nc_hash_size_var, nc_hash_size_attr, and nc_hash_size_gattr.
+ */
+#define PNC_HSIZE_DIM    256
+#define PNC_HSIZE_VAR    256
+#define PNC_HSIZE_VATTR    8  /* attributes per variable */
+#define PNC_HSIZE_GATTR   64  /* global attributes */
+
+/* Array allocation growby for the list of each hash table key */
+#define PNC_HLIST_GROWBY   4
+
 /*
-#define HASH_FUNC(x) ncmpio_jenkins_one_at_a_time_hash(x)
+#define HASH_FUNC(x) ncmpio_jenkins_one_at_a_time_hash(x, hsize)
 #define HASH_FUNC(x) ncmpio_additive_hash(x)
-#define HASH_FUNC(x) ncmpio_rotating_hash(x)
-#define HASH_FUNC(x) ncmpio_Pearson_hash(x)
+#define HASH_FUNC(x) ncmpio_rotating_hash(x, hsize)
+#define HASH_FUNC(x) ncmpio_Pearson_hash(x, hsize)
 */
-#define HASH_FUNC(x) ncmpio_Bernstein_hash(x)
+#define HASH_FUNC(x, hsize) ncmpio_Bernstein_hash(x, hsize)
 /* Look like Bernstein's hashing function performs the best */
 
 /* For the initial naive implementation of hashing:
  * #define HASH_FUNC(x) (unsigned char)x[0]
- * if used this simple hash function, HASH_TABLE_SIZE must be 256 which is the
+ * if used this simple hash function, hash table size must be 256 which is the
  * number of possible keys can be stored in an unsigned char
  */
 
 typedef struct NC_nametable {
-    int  num;  /* number of elements added in the list array. Its value starts
-                  with zero and incremented with new name is created. When its
-                  value becomes a multiple of NC_NAME_TABLE_CHUNK, list will be
-                  reallocated to a space of size (num + NC_NAME_TABLE_CHUNK) */
-    int *list; /* dimension or variable IDs */
+    int  num;  /* number of elements in the list array. It starts with value
+                * zero and incremented with new name inserted. When its value
+                * becomes a multiple of PNC_HASH_TABLE_GROWBY, list will be
+                * reallocated to a space of size (num + PNC_HASH_TABLE_GROWBY)
+                */
+    int *list; /* dimension, variable, attribute IDs */
 } NC_nametable;
 
 /*
@@ -140,8 +157,10 @@ typedef struct NC_dimarray {
     int            *indexes;         /* local dim ids to dimid (index)*/
     int            unlimited_id;  /* -1 for not defined, otherwise >= 0 */
     NC_dim       **value;
-    NC_nametable   nameT[HASH_TABLE_SIZE]; /* table for quick name lookup.
-                    * indices 0, 1, ... HASH_TABLE_SIZE-1 are the hash keys.
+    int            hash_size;
+    NC_nametable  *nameT;
+                   /* Hash table for quick name lookup.
+                    * indices 0, 1, ... hash_size-1 are the hash keys.
                     * nameT[i].num is the number of hash collisions. The IDs of
                     * dimensions with names producing the same hash key i are
                     * stored in nameT[i].list[*]
@@ -182,8 +201,10 @@ typedef struct {
 typedef struct NC_attrarray {
     int            ndefined;  /* number of defined attributes */
     NC_attr      **value;
-    NC_nametable   nameT[HASH_TABLE_SIZE]; /* table for quick name lookup.
-                    * indices 0, 1, ... HASH_TABLE_SIZE-1 are the hash keys.
+    int            hash_size;
+    NC_nametable  *nameT;
+                   /* Hash table for quick name lookup.
+                    * indices 0, 1, ... hash_size-1 are the hash keys.
                     * nameT[i].num is the number of hash collisions. The IDs of
                     * variables with names producing the same hash key i are
                     * stored in nameT[i].list[*]
@@ -254,8 +275,10 @@ typedef struct NC_vararray {
     int            *indexes;         /* local dim ids to dimid (index)*/
     int            num_rec_vars;/* number of defined record variables */
     NC_var       **value;
-    NC_nametable   nameT[HASH_TABLE_SIZE]; /* table for quick name lookup.
-                    * indices 0, 1, ... HASH_TABLE_SIZE-1 are the hash keys.
+    int            hash_size;
+    NC_nametable  *nameT;
+                   /* Hash table for quick name lookup.
+                    * indices 0, 1, ... hash_size-1 are the hash keys.
                     * nameT[i].num is the number of hash collisions. The IDs of
                     * variables with names producing the same hash key i are
                     * stored in nameT[i].list[*]
@@ -273,7 +296,8 @@ extern void
 ncmpio_free_NC_vararray(NC_vararray *ncap);
 
 extern int
-ncmpio_dup_NC_vararray(NC_vararray *ncap, const NC_vararray *ref);
+ncmpio_dup_NC_vararray(NC_vararray *ncap, const NC_vararray *ref,
+                       int attr_hsize);
 
 extern int
 ncmpio_NC_var_shape64(NC_var *varp, const NC_dimarray *dims);
@@ -350,6 +374,7 @@ typedef struct NC_buf {
 #define NC_NDIRTY 0x400000  /* numrecs has changed */
 #define NC_HDIRTY 0x800000  /* header info has changed */
 #define NC_HCOLL  0x000001  /* write header collectively */
+
 struct NC {
     int           ncid;         /* file ID */
     int           flags;        /* various modes, i.e. define/data, fill,
@@ -366,11 +391,13 @@ struct NC {
     MPI_Comm      comm_sf;      /* subfile MPI communicator */
 #endif
     int           striping_unit; /* stripe size of the file */
-    int           chunk;       /* chunk size for reading header */
+    int           chunk;       /* chunk size for reading header, one chunk at a time */
     MPI_Offset    h_align;     /* file alignment for header size */
     MPI_Offset    v_align;     /* alignment of the beginning of fixed-size variables */
-    MPI_Offset    fx_v_align;  /* file alignment for each fixed-size variable */
     MPI_Offset    r_align;     /* file alignment for record variable section */
+    MPI_Offset    env_h_align; /* h_align set in environment variable */
+    MPI_Offset    env_v_align; /* v_align set in environment variable */
+    MPI_Offset    env_r_align; /* r_align set in environment variable */
     MPI_Offset    h_minfree;   /* pad at the end of the header section */
     MPI_Offset    v_minfree;   /* pad at the end of the data section for fixed-size variables */
     MPI_Offset    ibuf_size;   /* packing buffer size for flushing noncontig
@@ -396,6 +423,8 @@ struct NC {
     NC_dimarray   dims;     /* dimensions defined */
     NC_attrarray  attrs;    /* global attributes defined */
     NC_vararray   vars;     /* variables defined */
+
+    int           hash_size_attr;  /* hash table size for non-global attributes */
 
     int           maxGetReqID;    /* max get request ID */
     int           maxPutReqID;    /* max put request ID */
@@ -451,7 +480,7 @@ typedef struct bufferinfo {
     MPI_File    collective_fh;
     MPI_Offset  get_size; /* amount of file read n bytes so far */
     MPI_Offset  offset;   /* current read/write offset in the file */
-    int         size;     /* allocated size of the buffer */
+    int         chunk;    /* chunk size for reading the header */
     int         version;  /* 1, 2, and 5 for CDF-1, 2, and 5 respectively */
     int         safe_mode;/* 0: disabled, 1: enabled */
     int         rw_mode;  /* 0: independent, 1: collective */
@@ -510,45 +539,48 @@ ncmpio_igetput_varm(NC *ncp, NC_var *varp, const MPI_Offset *start,
 
 /* Begin defined in ncmpio_hash_func.c --------------------------------------*/
 extern int
-ncmpio_jenkins_one_at_a_time_hash(const char *str_name);
+ncmpio_jenkins_one_at_a_time_hash(const char *str_name, int hash_size);
 
 extern int
 ncmpio_additive_hash(const char *str_name);
 
 extern int
-ncmpio_rotating_hash(const char *str_name);
+ncmpio_rotating_hash(const char *str_name, int hash_size);
 
 extern int
-ncmpio_Bernstein_hash(const char *str_name);
+ncmpio_Bernstein_hash(const char *str_name, int hsize);
 
 extern int
-ncmpio_Pearson_hash(const char *str_name);
+ncmpio_Pearson_hash(const char *str_name, int hsize);
 
 extern int
-ncmpio_update_name_lookup_table(NC_nametable *nameT, const int id,
+ncmpio_update_name_lookup_table(NC_nametable *nameT, int hash_size, int id,
                                 const char *oldname, const char *newname);
 
 extern void
-ncmpio_hash_insert(NC_nametable *nameT, const char *name, int id);
+ncmpio_hash_insert(NC_nametable *nameT, int hash_size, const char *name,
+                   int id);
 
 extern int
-ncmpio_hash_delete(NC_nametable *nameT, const char *name, int id);
+ncmpio_hash_delete(NC_nametable *nameT, int hash_size, const char *name,
+                   int id);
 
 extern int
-ncmpio_hash_replace(NC_nametable *nameT, const char *old_name,
+ncmpio_hash_replace(NC_nametable *nameT, int hash_size, const char *old_name,
                     const char *new_name, int id);
 
 extern void
-ncmpio_hash_table_copy(NC_nametable *dest, const NC_nametable *src);
+ncmpio_hash_table_copy(NC_nametable *dest, const NC_nametable *src,
+                       int hash_size);
 
 extern void
-ncmpio_hash_table_free(NC_nametable *nameT);
+ncmpio_hash_table_free(NC_nametable *nameT, int hash_size);
 
 extern void
-ncmpio_hash_table_populate_NC_var(NC_vararray *varsp);
+ncmpio_hash_table_populate_NC_var(NC_vararray *varsp, int hash_size);
 
 extern void
-ncmpio_hash_table_populate_NC_dim(NC_dimarray *dimsp);
+ncmpio_hash_table_populate_NC_dim(NC_dimarray *dimsp, int hash_size);
 
 extern void
 ncmpio_hash_table_populate_NC_attr(NC *ncp);
@@ -603,7 +635,7 @@ ncmpio_unpack_xbuf(int format, NC_var *varp, MPI_Offset bufcount,
 /* Begin defined in ncmpio_file_io.c ----------------------------------------*/
 extern int
 ncmpio_read_write(NC *ncp, int rw_flag, int coll_indep, MPI_Offset offset,
-                  int len, MPI_Datatype buf_type, void *buf,
+                  MPI_Offset buf_count, MPI_Datatype buf_type, void *buf,
                   int buftype_is_contig);
 
 #endif /* _NC_H */

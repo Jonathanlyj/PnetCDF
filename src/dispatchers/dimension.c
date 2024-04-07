@@ -59,21 +59,19 @@ ncmpi_def_dim(int         ncid,    /* IN:  file ID */
     /* MPI_Offset is usually a signed value, but serial netcdf uses size_t.
      * In 1999 ISO C standard, size_t is an unsigned integer type of at least
      * 16 bit. */
-    if (pncp->format == NC_FORMAT_CDF2) { /* CDF-2 format, max is 2^32-4 */
-        if (size > NC_MAX_UINT - 3 || (size < 0))
-            /* "-3" handles rounded-up size */
-            err = NC_EDIMSIZE;
+    if (pncp->format == NC_FORMAT_CDF2) { /* CDF-2 format, max is NC_MAX_INT */
+        if (size > NC_MAX_INT || (size < 0))
+            DEBUG_ASSIGN_ERROR(err, NC_EDIMSIZE)
     } else if (pncp->format == NC_FORMAT_CDF5) { /* CDF-5 format */
         if (size < 0)
-            err = NC_EDIMSIZE;
+            DEBUG_ASSIGN_ERROR(err, NC_EDIMSIZE)
     } else if (pncp->format == NC_FORMAT_NETCDF4 ||
                pncp->format == NC_FORMAT_NETCDF4_CLASSIC) { /* NetCDF-4 format */
         if (size < 0)
-            err = NC_EDIMSIZE;
-    } else { /* CDF-1 format, max is 2^31-4 */
-        if (size > NC_MAX_INT - 3 || (size < 0))
-            /* "-3" handles rounded-up size */
-            err = NC_EDIMSIZE;
+            DEBUG_ASSIGN_ERROR(err, NC_EDIMSIZE)
+    } else { /* CDF-1 format, max is NC_MAX_INT */
+        if (size > NC_MAX_INT || (size < 0))
+            DEBUG_ASSIGN_ERROR(err, NC_EDIMSIZE)
     }
     if (err != NC_NOERR) {
         DEBUG_TRACE_ERROR(err)
@@ -121,7 +119,7 @@ err_check:
 
         /* check if name is consistent among all processes */
         assert(name != NULL);
-        root_name_len = strlen(name) + 1;
+        root_name_len = (int)strlen(name) + 1;
         TRACE_COMM(MPI_Bcast)(&root_name_len, 1, MPI_INT, 0, pncp->comm);
         if (mpireturn != MPI_SUCCESS)
             return ncmpii_error_mpi2nc(mpireturn, "MPI_Bcast root_name_len");
@@ -310,7 +308,7 @@ err_check:
 
         /* check if name is consistent among all processes */
         assert(newname != NULL);
-        root_name_len = strlen(newname) + 1;
+        root_name_len = (int)strlen(newname) + 1;
         TRACE_COMM(MPI_Bcast)(&root_name_len, 1, MPI_INT, 0, pncp->comm);
         if (mpireturn != MPI_SUCCESS)
             return ncmpii_error_mpi2nc(mpireturn, "MPI_Bcast root_name_len");
