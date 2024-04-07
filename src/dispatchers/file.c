@@ -1713,8 +1713,8 @@ ncmpi_enddef(int ncid) {
     
     hdr_dim ** sort_dims = NULL;
     hdr_var ** sort_vars = NULL;
-    int **dim_sort_map = (int **)malloc(size * sizeof(int *));
-    int **var_sort_map = (int **)malloc(size * sizeof(int *));
+    int **dim_sort_map = (int **)NCI_Malloc(size * sizeof(int *));
+    int **var_sort_map = (int **)NCI_Malloc(size * sizeof(int *));
     for (int i = 0; i < size; ++i) {
         struct hdr recv_hdr;
         // struct hdr *recv_hdr_ptr = (struct hdr *)NCI_Malloc(sizeof(struct hdr));
@@ -1746,8 +1746,8 @@ ncmpi_enddef(int ncid) {
         memcpy(sort_vars + total_nvars, recv_hdr.vars.value, local_nvars * sizeof(hdr_var*));
         total_ndims += local_ndims;
         total_nvars += local_nvars;
-        dim_sort_map[i] = (int *)malloc(local_ndims * sizeof(int));
-        var_sort_map[i] = (int *)malloc(local_nvars * sizeof(int));
+        dim_sort_map[i] = (int *)NCI_Malloc(local_ndims * sizeof(int));
+        var_sort_map[i] = (int *)NCI_Malloc(local_nvars * sizeof(int));
     }
     //sort dim array based on customized compare function
     qsort(sort_dims, total_ndims, sizeof(hdr_dim*), compare_dim);
