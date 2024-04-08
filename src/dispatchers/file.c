@@ -601,17 +601,17 @@ const NC_vararray* old_vararray, hdr_dim** sort_dims, int ndims_tmp, int** dim_s
         varp->varid = ncp->vars.ndefined;
         ncp->vars.value[ncp->vars.ndefined] = varp;
         ncp->vars.ndefined++;
-#ifndef SEARCH_NAME_LINEARLY
-    /* insert nname to the lookup table */
-        if(ncp->vars.ndefined==1){
-            ncmpio_hash_table_populate_NC_var(&ncp->vars, ncp->vars.hash_size);
-        }else{
-            ncmpio_hash_insert(ncp->vars.nameT, ncp->vars.hash_size, nname, varp->varid);
-            // ncmpio_hash_table_populate_NC_var(&ncp->vars);
-        }
         //record this varid
         sort_vars[var_sort_map[hdr_idx][i]]->global_id = varp->varid;
-        
+#ifndef SEARCH_NAME_LINEARLY
+    /* insert nname to the lookup table */
+        // if(ncp->vars.ndefined==1){
+        //     ncmpio_hash_table_populate_NC_var(&ncp->vars, ncp->vars.hash_size);
+        // }else{
+        //     ncmpio_hash_insert(ncp->vars.nameT, ncp->vars.hash_size, nname, varp->varid);
+        //     // ncmpio_hash_table_populate_NC_var(&ncp->vars);
+        // }
+
 #endif
         //Update PNC object
         // printf("\n started add PNC new varaible object");
@@ -1597,7 +1597,7 @@ ncmpi_enddef(int ncid) {
     else if (err != NC_NOERR) return err; /* fatal error */
 
     /* ---------------------------------------------- META: serilize local metadata to buffer----------------------------------------------*/
-    // struct hdr *local_hdr = (struct hdr *)NCI_Malloc(sizeof(struct hdr *));
+    // struct hdr *local_hdr = (struct hdr *)NCI_Malloc(sizeof(struct hdr));
     struct hdr local_hdr;
     err = baseline_extract_meta(pncp->ncp, &local_hdr);
     // printf("%s\n", local_hdr->dims.value[0]->name);
@@ -1647,7 +1647,7 @@ ncmpi_enddef(int ncid) {
         
     }
     char* all_collections_buffer = (char*) NCI_Malloc(total_recv_size);
-
+;
     int* recvcounts =  (int*)NCI_Malloc(size * sizeof(int));
     for (int i = 0; i < size; ++i) {
         recvcounts[i] = (int)all_collection_sizes[i];
@@ -1655,8 +1655,11 @@ ncmpi_enddef(int ncid) {
     // Phase 2: Communicate the actual header data
     // Before MPI_Allgatherv
     TRACE_COMM(MPI_Allgatherv)(send_buffer, local_hdr.xsz, MPI_BYTE, all_collections_buffer, recvcounts, recv_displs, MPI_BYTE, pncp->comm);
-    free_hdr_vararray(&local_hdr.vars);
+    // free_hdr(local_hdr);
     free_hdr_dimarray(&local_hdr.dims);
+    free_hdr_vararray(&local_hdr.vars);
+    
+
   /* ---------------------------------------------- META: Deseralize metadata ----------------------------------------------*/
 
     if (err != NC_NOERR) return err;
@@ -1677,7 +1680,6 @@ ncmpi_enddef(int ncid) {
 
     err = ncmpio_dup_NC_vararray(old_vararray, &ncp->vars, ncp->hash_size_attr);
     if (err != NC_NOERR) return err;
-    
     ncmpio_free_NC_dimarray(&ncp->dims);
     ncmpio_free_NC_vararray(&ncp->vars);
     ncp->dims.hash_size = old_dimarray->hash_size;
@@ -1705,6 +1707,7 @@ ncmpi_enddef(int ncid) {
     hdr_var ** sort_vars = NULL;
     int **dim_sort_map = (int **)NCI_Malloc(size * sizeof(int *));
     int **var_sort_map = (int **)NCI_Malloc(size * sizeof(int *));
+
     for (int i = 0; i < size; ++i) {
         struct hdr recv_hdr;
         // struct hdr *recv_hdr_ptr = (struct hdr *)NCI_Malloc(sizeof(struct hdr));

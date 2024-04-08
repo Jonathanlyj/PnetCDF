@@ -15,14 +15,15 @@
 // } NC_tag;
 
 typedef struct {
+    int rank_id;
+    int ranklocal_id;
+    int global_id;
     MPI_Offset  size;
     size_t      name_len; /* strlen(name), for faster string compare */
     // bool         shared;
     // int        global_idx; 
     // int sort_id;
-    int rank_id;
-    int ranklocal_id;
-    int global_id;
+
 
     char       *name;
 } hdr_dim;
@@ -50,15 +51,14 @@ typedef struct hdr_attrarray {
 
 
 typedef struct {
+    int rank_id;
+    int ranklocal_id;
+    int global_id;
     nc_type       xtype;   /* variable's external NC data type */
     size_t        name_len;/* strlen(name) for faster string compare */
     char         *name;    /* name of the variable */
     int           ndims;   /* number of dimensions */
     int          *dimids;  /* [ndims] array of dimension IDs */
-
-    int rank_id;
-    int ranklocal_id;
-    int global_id;
     hdr_attrarray  attrs;   /* attribute array */
 } hdr_var;
 
