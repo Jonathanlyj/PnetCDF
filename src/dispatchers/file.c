@@ -1705,9 +1705,13 @@ ncmpi_enddef(int ncid) {
     
     hdr_dim ** sort_dims = NULL;
     hdr_var ** sort_vars = NULL;
+    MPI_Offset malloc_size;
+    //Check memory usage
+    err = ncmpi_inq_malloc_size(&malloc_size);
+    if (rank == 0)
+        printf("\nBefore sort: heap memory allocated by PnetCDF internally has %.2f MB  yet to be freed\n",(double)malloc_size / (1024 * 1024));
     int **dim_sort_map = (int **)NCI_Malloc(size * sizeof(int *));
     int **var_sort_map = (int **)NCI_Malloc(size * sizeof(int *));
-
     for (int i = 0; i < size; ++i) {
         struct hdr recv_hdr;
         // struct hdr *recv_hdr_ptr = (struct hdr *)NCI_Malloc(sizeof(struct hdr));
@@ -1755,7 +1759,10 @@ ncmpi_enddef(int ncid) {
     for (int i = 0; i < total_nvars; ++i) {
         var_sort_map[sort_vars[i]->rank_id][sort_vars[i]->ranklocal_id] = i;
         }
-
+    //Check memory usage
+    err = ncmpi_inq_malloc_size(&malloc_size);
+    if (rank == 0)
+        printf("\nAfter sort: heap memory allocated by PnetCDF internally has %.2f MB  yet to be freed\n",(double)malloc_size / (1024 * 1024));
     
     //start construct the combined hdr structure
     for (int i = 0; i < size; ++i) {
