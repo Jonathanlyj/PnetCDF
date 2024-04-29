@@ -108,7 +108,7 @@ int deserialize_hdr(struct hdr *ncp, void *buf, int buf_size);
 static int getn_text(void **xpp, MPI_Offset nelems, char *tp);
 static int get_uint32(void **xpp, unsigned int *ip);
 static int deserialize_nc_type(metabuffer *gbp, nc_type *xtypep);
-static int deserialize_name(metabuffer *gbp, char **name);
+static int deserialize_name(metabuffer *gbp, char **name, size_t *name_len);
 static int deserialize_dim(metabuffer *gbp, hdr_dim *dimp);
 static int deserialize_dimarray(metabuffer *gbp, hdr_dimarray *ncap);
 static int deserialize_attrV(metabuffer *gbp, hdr_attr *attrp);
