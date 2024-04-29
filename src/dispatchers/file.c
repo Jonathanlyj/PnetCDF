@@ -1741,11 +1741,14 @@ ncmpi_enddef(int ncid) {
 
         memcpy(sort_dims + total_ndims, recv_hdr.dims.value, local_ndims * sizeof(hdr_dim*));
         memcpy(sort_vars + total_nvars, recv_hdr.vars.value, local_nvars * sizeof(hdr_var*));
+        NCI_Free(recv_hdr.dims.value);
+        NCI_Free(recv_hdr.vars.value);
         total_ndims += local_ndims;
         total_nvars += local_nvars;
         dim_sort_map[i] = (int *)NCI_Malloc(local_ndims * sizeof(int));
         var_sort_map[i] = (int *)NCI_Malloc(local_nvars * sizeof(int));
     }
+
     //sort dim array based on customized compare function
     qsort(sort_dims, total_ndims, sizeof(hdr_dim*), compare_dim);
     //create mapping from rank, rank_local_id to the index in sorted array
@@ -1781,6 +1784,12 @@ ncmpi_enddef(int ncid) {
     }
     NCI_Free(dim_sort_map);
     NCI_Free(var_sort_map);
+    for (int i = 0; i < total_ndims; i++) {
+        free_hdr_dim(sort_dims[i]);
+    }
+    for (int i = 0; i < total_nvars; i++) {
+        free_hdr_var(sort_vars[i]);
+    }
     NCI_Free(sort_dims);
     NCI_Free(sort_vars);
     
