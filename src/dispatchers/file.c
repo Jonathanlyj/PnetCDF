@@ -1601,9 +1601,9 @@ ncmpi_enddef(int ncid) {
     struct hdr local_hdr;
     err = baseline_extract_meta(pncp->ncp, &local_hdr);
     // printf("%s\n", local_hdr->dims.value[0]->name);
-    int rank, size;
+    int rank, nproc;
     MPI_Comm_rank(pncp->comm, &rank);
-    MPI_Comm_size(pncp->comm, &size);
+    MPI_Comm_size(pncp->comm, &nproc);
     // if (rank > 1){
     // for (int i = 0; i < local_hdr.dims.ndefined; i++) {
     //     printf("rank %d:  Name: %s, Size: %lld\n", rank,  local_hdr.dims.value[i]->name, local_hdr.dims.value[i]->size);
@@ -1631,25 +1631,25 @@ ncmpi_enddef(int ncid) {
     /* ---------------------------------------------- META: Communicate metadata size----------------------------------------------*/
 
   // Phase 1: Communicate the sizes of the header structure for each process
-    MPI_Offset* all_collection_sizes = (MPI_Offset*) NCI_Malloc(size * sizeof(MPI_Offset));
+    MPI_Offset* all_collection_sizes = (MPI_Offset*) NCI_Malloc(nproc * sizeof(MPI_Offset));
     int mpireturn;
 
     TRACE_COMM(MPI_Allgather)(&local_hdr.xsz, 1, MPI_OFFSET, all_collection_sizes, 1, MPI_OFFSET, pncp->comm);
 
     /* ---------------------------------------------- META: Communicate metadata ----------------------------------------------*/
     // Calculate displacements for the second phase
-    int* recv_displs = (int*) NCI_Malloc(size * sizeof(int));
+    int* recv_displs = (int*) NCI_Malloc(nproc * sizeof(int));
     int total_recv_size = all_collection_sizes[0];
     recv_displs[0] = 0;
-    for (int i = 1; i < size; ++i) {
+    for (int i = 1; i < nproc; ++i) {
         recv_displs[i] = recv_displs[i - 1] + all_collection_sizes[i - 1];
         total_recv_size += all_collection_sizes[i];
         
     }
     char* all_collections_buffer = (char*) NCI_Malloc(total_recv_size);
 ;
-    int* recvcounts =  (int*)NCI_Malloc(size * sizeof(int));
-    for (int i = 0; i < size; ++i) {
+    int* recvcounts =  (int*)NCI_Malloc(nproc * sizeof(int));
+    for (int i = 0; i < nproc; ++i) {
         recvcounts[i] = (int)all_collection_sizes[i];
     }
     // Phase 2: Communicate the actual header data
@@ -1710,39 +1710,40 @@ ncmpi_enddef(int ncid) {
     err = ncmpi_inq_malloc_size(&malloc_size);
     if (rank == 0)
         printf("\nBefore sort: heap memory allocated by PnetCDF internally has %.2f MB  yet to be freed\n",(double)malloc_size / (1024 * 1024));
-    int **dim_sort_map = (int **)NCI_Malloc(size * sizeof(int *));
-    int **var_sort_map = (int **)NCI_Malloc(size * sizeof(int *));
-    for (int i = 0; i < size; ++i) {
-        struct hdr recv_hdr;
-        // struct hdr *recv_hdr_ptr = (struct hdr *)NCI_Malloc(sizeof(struct hdr));
-        deserialize_hdr(&recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
-        local_ndims = recv_hdr.dims.ndefined;
-        local_nvars = recv_hdr.vars.ndefined;
+    int **dim_sort_map = (int **)NCI_Malloc(nproc * sizeof(int *));
+    int **var_sort_map = (int **)NCI_Malloc(nproc * sizeof(int *));
+    struct hdr** all_recv_hdr = (struct hdr**)NCI_Malloc(nproc * sizeof(struct hdr*));
+    for (int i = 0; i < nproc; ++i) {
+        // struct hdr recv_hdr;
+        all_recv_hdr[i] = (struct hdr *)NCI_Malloc(sizeof(struct hdr));
+        deserialize_hdr(all_recv_hdr[i], all_collections_buffer + recv_displs[i], recvcounts[i]);
+        local_ndims = all_recv_hdr[i]->dims.ndefined;
+        local_nvars = all_recv_hdr[i]->vars.ndefined;
 
         for (int j = 0; j < local_ndims; ++j){
-            // recv_hdr_ptr->dims.value[j]->rank_id = i;
-            // recv_hdr_ptr->dims.value[j]->ranklocal_id = j;
-            // recv_hdr_ptr->dims.value[j]->global_id = -99;
-            recv_hdr.dims.value[j]->rank_id = i;
-            recv_hdr.dims.value[j]->ranklocal_id = j;
-            recv_hdr.dims.value[j]->global_id = -99;
+            // all_recv_hdr[i]_ptr->dims.value[j]->rank_id = i;
+            // all_recv_hdr[i]_ptr->dims.value[j]->ranklocal_id = j;
+            // all_recv_hdr[i]_ptr->dims.value[j]->global_id = -99;
+            all_recv_hdr[i]->dims.value[j]->rank_id = i;
+            all_recv_hdr[i]->dims.value[j]->ranklocal_id = j;
+            all_recv_hdr[i]->dims.value[j]->global_id = -99;
         }
 
         for (int j = 0; j < local_nvars; ++j){
-            // recv_hdr_ptr->vars.value[j]->rank_id = i;
-            // recv_hdr_ptr->vars.value[j]->ranklocal_id = j;
-            // recv_hdr_ptr->vars.value[j]->global_id = -99;
-            recv_hdr.vars.value[j]->rank_id = i;
-            recv_hdr.vars.value[j]->ranklocal_id = j;
-            recv_hdr.vars.value[j]->global_id = -99;
+            // all_recv_hdr[i]_ptr->vars.value[j]->rank_id = i;
+            // all_recv_hdr[i]_ptr->vars.value[j]->ranklocal_id = j;
+            // all_recv_hdr[i]_ptr->vars.value[j]->global_id = -99;
+            all_recv_hdr[i]->vars.value[j]->rank_id = i;
+            all_recv_hdr[i]->vars.value[j]->ranklocal_id = j;
+            all_recv_hdr[i]->vars.value[j]->global_id = -99;
         }
         sort_dims = (hdr_dim **) NCI_Realloc(sort_dims, (total_ndims + local_ndims) * sizeof(hdr_dim*));
         sort_vars = (hdr_var **) NCI_Realloc(sort_vars, (total_nvars + local_nvars) * sizeof(hdr_var*));
 
-        memcpy(sort_dims + total_ndims, recv_hdr.dims.value, local_ndims * sizeof(hdr_dim*));
-        memcpy(sort_vars + total_nvars, recv_hdr.vars.value, local_nvars * sizeof(hdr_var*));
-        NCI_Free(recv_hdr.dims.value);
-        NCI_Free(recv_hdr.vars.value);
+        memcpy(sort_dims + total_ndims, all_recv_hdr[i]->dims.value, local_ndims * sizeof(hdr_dim*));
+        memcpy(sort_vars + total_nvars, all_recv_hdr[i]->vars.value, local_nvars * sizeof(hdr_var*));
+        // NCI_Free(recv_hdr.dims.value);
+        // NCI_Free(recv_hdr.vars.value);
         total_ndims += local_ndims;
         total_nvars += local_nvars;
         dim_sort_map[i] = (int *)NCI_Malloc(local_ndims * sizeof(int));
@@ -1768,28 +1769,32 @@ ncmpi_enddef(int ncid) {
         printf("\nAfter sort: heap memory allocated by PnetCDF internally has %.2f MB  yet to be freed\n",(double)malloc_size / (1024 * 1024));
     
     //start construct the combined hdr structure
-    for (int i = 0; i < size; ++i) {
-        struct hdr *recv_hdr = (struct hdr*)NCI_Malloc(sizeof(struct hdr));
+    for (int i = 0; i < nproc; ++i) {
+        // struct hdr *recv_hdr = (struct hdr*)NCI_Malloc(sizeof(struct hdr));
         // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
-        deserialize_hdr(recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
-        err = add_hdr(recv_hdr, i, rank, pncp, old_dimarray, old_vararray, sort_dims, total_ndims, dim_sort_map, sort_vars, total_nvars, var_sort_map);
-        free_hdr(recv_hdr);
+        // deserialize_hdr(recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
+        err = add_hdr(all_recv_hdr[i], i, rank, pncp, old_dimarray, old_vararray, sort_dims, total_ndims, dim_sort_map, sort_vars, total_nvars, var_sort_map);
+        // free_hdr(&all_recv_hdr[i]);
         if (err != NC_NOERR) return err;
     }
-    for (int i = 0; i < size; i++) {
+    for (int i = 0; i < nproc; i++) {
         NCI_Free(dim_sort_map[i]);
     }
-    for (int i = 0; i < size; i++) {
+    for (int i = 0; i < nproc; i++) {
         NCI_Free(var_sort_map[i]);
     }
     NCI_Free(dim_sort_map);
     NCI_Free(var_sort_map);
-    for (int i = 0; i < total_ndims; i++) {
-        free_hdr_dim(sort_dims[i]);
+    for (int i; i < nproc; i++) {
+        free_hdr(all_recv_hdr[i]);
     }
-    for (int i = 0; i < total_nvars; i++) {
-        free_hdr_var(sort_vars[i]);
-    }
+    NCI_Free(all_recv_hdr);
+    // for (int i = 0; i < total_ndims; i++) {
+    //     free_hdr_dim(sort_dims[i]);
+    // }
+    // for (int i = 0; i < total_nvars; i++) {
+    //     free_hdr_var(sort_vars[i]);
+    // }
     NCI_Free(sort_dims);
     NCI_Free(sort_vars);
     
