@@ -1726,11 +1726,11 @@ ncmpi_enddef(int ncid) {
     for (int i = 0; i < nproc; ++i) {
         // struct hdr recv_hdr;
         all_recv_hdr[i] = (struct hdr *)NCI_Malloc(sizeof(struct hdr));
-        err = ncmpi_inq_malloc_size(&malloc_size);
-        if (rank == 0) printf("\nMilestone0: heap memory allocated by PnetCDF internally has %.2f MB  yet to be freed\n",(double)malloc_size / (1024 * 1024));
+        // err = ncmpi_inq_malloc_size(&malloc_size);
+        // if (rank == 0) printf("\nMilestone0: heap memory allocated by PnetCDF internally has %.2f MB  yet to be freed\n",(double)malloc_size / (1024 * 1024));
         deserialize_hdr(all_recv_hdr[i], all_collections_buffer + recv_displs[i], recvcounts[i]);
-        err = ncmpi_inq_malloc_size(&malloc_size);
-        if (rank == 0) printf("\nMilestone0: heap memory allocated by PnetCDF internally has %.2f MB  yet to be freed\n",(double)malloc_size / (1024 * 1024));
+        // err = ncmpi_inq_malloc_size(&malloc_size);
+        // if (rank == 0) printf("\nMilestone0: heap memory allocated by PnetCDF internally has %.2f MB  yet to be freed\n",(double)malloc_size / (1024 * 1024));
         local_ndims = all_recv_hdr[i]->dims.ndefined;
         local_nvars = all_recv_hdr[i]->vars.ndefined;
 
