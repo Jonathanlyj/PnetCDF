@@ -52,6 +52,7 @@ ncmpio_free_NC(NC *ncp)
     if (ncp->put_list != NULL) NCI_Free(ncp->put_list);
     if (ncp->abuf     != NULL) NCI_Free(ncp->abuf);
     if (ncp->path     != NULL) NCI_Free(ncp->path);
+    if (ncp->block_begins     != NULL) NCI_Free(ncp->block_begins);
 
     NCI_Free(ncp);
 }

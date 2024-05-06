@@ -272,13 +272,14 @@ NC_begins(NC *ncp)
     MPI_Comm_size(ncp->comm, &nproc);
     ncp->global_xsz = ncmpio_global_hdr_len_NC(ncp);
     ncp->local_xsz = ncmpio_local_hdr_len_NC(ncp);
-    printf("\nrank %d, pncp->ncp->global_xsz: %lld", rank, ncp->local_xsz);
+    printf("\nrank %d, pncp->ncp->global_xsz: %lld", rank, ncp->global_xsz);
     printf("\nrank %d, pncp->ncp->local_xsz: %lld", rank, ncp->local_xsz);
 
     /*META: need to exchange metadata size and reset header size here*/
-    MPI_Offset* all_hdr_sizes = (MPI_Offset*) NCI_Malloc(rank * sizeof(MPI_Offset));
+    MPI_Offset* all_hdr_sizes = (MPI_Offset*) NCI_Malloc(nproc * sizeof(MPI_Offset));
     // Collect local header sizes from all processes
     TRACE_COMM(MPI_Allgather)(&ncp->local_xsz, 1, MPI_OFFSET, all_hdr_sizes, 1, MPI_OFFSET, ncp->comm);
+    ncp->block_begins = (MPI_Offset*) NCI_Malloc(nproc * sizeof(MPI_Offset));
     // Sum up local header size to get total header size
     ncp->block_begins[0] = ncp->global_xsz;
     for (int i = 1; i < nproc; i++) {
@@ -574,6 +575,7 @@ write_NC(NC *ncp)
     // header_wlen = ncp->xsz;
 // #endif
     global_header_wlen = ncp->global_xsz;
+    
     local_header_wlen = ncp->local_xsz;
     global_header_wlen = _RNDUP(global_header_wlen, X_ALIGN);
     local_header_wlen = _RNDUP(local_header_wlen, X_ALIGN);
@@ -598,6 +600,7 @@ write_NC(NC *ncp)
          */
         buf = (char*)NCI_Calloc(global_header_wlen, 1);
 #else
+        printf("\nglobal_header_wlen: %lld", global_header_wlen);
         /* Do not write padding area (between ncp->xsz and ncp->begin_var) */
         buf = (char*)NCI_Malloc(global_header_wlen);
 #endif
@@ -667,7 +670,8 @@ write_NC(NC *ncp)
 
         /* copy the  local header object to buf */
         //META: need to change this function to to variants: global_header and local_header
-        char *local_buf=NULL, *local_buf_ptr;
+        char *local_buf=NULL,    *local_buf_ptr;
+        local_buf = (char*)NCI_Malloc(local_header_wlen);
         status = ncmpio_local_hdr_put_NC(ncp, local_buf);
         if (status != NC_NOERR) /* a fatal error */
             goto fn_exit;
@@ -719,7 +723,7 @@ write_NC(NC *ncp)
             local_buf_ptr += bufCount;
             remain  -= bufCount;
         }
-
+        NCI_Free(local_buf);
 
 fn_exit:
     if (ncp->safe_mode == 1) {
@@ -1245,6 +1249,7 @@ ncmpio__enddef(void       *ncdp,
      * all processes.
      */
     err = NC_begins(ncp);
+    printf("\nafter NC begin ncp->global_xsz: %lld", ncp->global_xsz);
     CHECK_ERROR(err)
 
     /* update the total number of record variables */
@@ -1312,6 +1317,7 @@ ncmpio__enddef(void       *ncdp,
     /* first sync header objects in memory across all processes, and then root
      * writes the header to file. Note safe_mode error check will be done in
      * write_NC() */
+    printf("\nbewfore write NC ncp->global_xsz: %lld", ncp->global_xsz);
     status = write_NC(ncp);
 
     /* we should continue to exit define mode, even if header is inconsistent

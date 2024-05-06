@@ -1324,6 +1324,7 @@ hdr_len_NC_block_offset_array(const int nblocks, int sizeof_NON_NEG){
     xlen = X_SIZEOF_NC_TAG;           /* NC_BLOCKOFFSET */
     xlen += sizeof_NON_NEG;           /* nelems */
     xlen += sizeof_NON_NEG * nblocks;   /* [OFFSET ...] */
+    return xlen;
 }
 /*META*/
 /*----< ncmpio_global_hdr_len_NC() >------------------------------------------------*/
@@ -1362,8 +1363,9 @@ ncmpio_global_hdr_len_NC(const NC *ncp)
     xlen  = NC_MAGIC_LEN;                                                    /* magic */
     xlen += sizeof_NON_NEG;                                                  /* numrecs */
     xlen += hdr_len_NC_attrarray(&ncp->attrs, sizeof_NON_NEG);               /* gatt_list */
+    printf("\nxlen = %lld\n", xlen);
     xlen += hdr_len_NC_block_offset_array(ncp->nblocks, sizeof_NON_NEG);    /* block_begins */
-
+    printf("\nxlen = %lld\n", xlen);
     return xlen; /* return the header size (not yet aligned) */
 }
 

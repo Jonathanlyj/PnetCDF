@@ -586,7 +586,15 @@ ncmpio_local_hdr_put_NC(NC *ncp, void *buf)
      * local_header = [header_block ...]
      * header_block = dim_list var_list
      */
-
+    if (ncp->format == 5) {
+        putbuf.version = 5;
+    }
+    else if (ncp->format == 2) {
+        putbuf.version = 2;
+    }
+    else {
+        putbuf.version = 1;
+    }
 
     /* copy dim_list */
     status = hdr_put_NC_dimarray(&putbuf, &ncp->dims);
