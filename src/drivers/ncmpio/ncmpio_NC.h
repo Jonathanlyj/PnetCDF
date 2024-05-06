@@ -69,7 +69,8 @@ typedef enum {
     NC_UNSPECIFIED =  0,  /* ABSENT */
     NC_DIMENSION   = 10,  /* \x00 \x00 \x00 \x0A */
     NC_VARIABLE    = 11,  /* \x00 \x00 \x00 \x0B */
-    NC_ATTRIBUTE   = 12   /* \x00 \x00 \x00 \x0C */
+    NC_ATTRIBUTE   = 12,  /* \x00 \x00 \x00 \x0C */
+    NC_BLOCK   = 13  /* \x00 \x00 \x00 \x0D */
 } NC_tag;
 
 /* netcdf file format:
@@ -383,6 +384,7 @@ struct NC {
 #endif
     int           striping_unit; /* stripe size of the file */
     int           chunk;       /* chunk size for reading header, one chunk at a time */
+    int          nblocks;      /* META: number of header blocks*/
     MPI_Offset    h_align;     /* file alignment for header size */
     MPI_Offset    v_align;     /* alignment of the beginning of fixed-size variables */
     MPI_Offset    r_align;     /* file alignment for record variable section */
@@ -393,6 +395,10 @@ struct NC {
     MPI_Offset    v_minfree;   /* pad at the end of the data section for fixed-size variables */
     MPI_Offset    ibuf_size;   /* packing buffer size for flushing noncontig
                                   user buffer during wait */
+    MPI_Offset    global_xsz;         /* META: size of this global file header */
+    MPI_Offset    local_xsz;         /* META:  size of this global file header */
+    MPI_Offset*   block_begins;    /* META: starting file offset of this variable*/
+
     MPI_Offset    xsz;         /* size of this file header, <= var[0].begin */
     MPI_Offset    begin_var;   /* file offset of the first fixed-size variable,
                                   if no fixed-sized variable, it is the offset
@@ -483,12 +489,27 @@ typedef struct bufferinfo {
 extern MPI_Offset
 ncmpio_hdr_len_NC(const NC *ncp);
 
+/*META*/
+extern MPI_Offset
+ncmpio_global_hdr_len_NC(const NC *ncp);
+/*META*/
+extern MPI_Offset
+ncmpio_local_hdr_len_NC(const NC *ncp);
+
 extern int
 ncmpio_hdr_get_NC(NC *ncp);
 
 /* Begin defined in ncmpio_header_put.c -------------------------------------*/
 extern int
 ncmpio_hdr_put_NC(NC *ncp, void *buf);
+
+/*META*/
+extern int
+ncmpio_local_hdr_put_NC(NC *ncp, void *buf);
+
+/*META*/
+extern int
+ncmpio_global_hdr_put_NC(NC *ncp, void *buf);
 
 extern int
 ncmpio_write_header(NC *ncp);

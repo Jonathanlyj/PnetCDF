@@ -931,6 +931,7 @@ ncmpi_enddef(int ncid) {
     else if (err != NC_NOERR) return err; /* fatal error */
 
     /* calling the subroutine that implements ncmpi_enddef() */
+
     err = pncp->driver->enddef(pncp->ncp);
     if (err != NC_NOERR) return err;
 

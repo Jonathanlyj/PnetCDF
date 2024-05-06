@@ -256,19 +256,37 @@ move_record_vars(NC *ncp, NC *old) {
 static int
 NC_begins(NC *ncp)
 {
-    int i, j, rank, mpireturn;
-    MPI_Offset end_var=0;
+    int i, j, rank, nproc, mpireturn;
+    MPI_Offset end_var = 0;
+    MPI_Offset block_var_len = 0, block_start_var = 0, block_end_var = 0, block_var_tot_len = 0; //META: for non-reconrd var begins
+    MPI_Offset block_rec_var_len = 0, block_start_rec_var = 0, block_end_rec_var = 0, block_rec_var_tot_len = 0; //META: for reconrd var begins
     NC_var *last = NULL;
     NC_var *first_var = NULL;       /* first "non-record" var */
-
+    int err;
     /* For CDF-1 and 2 formats, a variable's "begin" in the header is 4 bytes.
      * For CDF-5, it is 8 bytes.
      */
 
     /* get the true header size (not header extent) */
     MPI_Comm_rank(ncp->comm, &rank);
-    ncp->xsz = ncmpio_hdr_len_NC(ncp);
+    MPI_Comm_size(ncp->comm, &nproc);
+    ncp->global_xsz = ncmpio_global_hdr_len_NC(ncp);
+    ncp->local_xsz = ncmpio_local_hdr_len_NC(ncp);
+    printf("\nrank %d, pncp->ncp->global_xsz: %lld", rank, ncp->local_xsz);
+    printf("\nrank %d, pncp->ncp->local_xsz: %lld", rank, ncp->local_xsz);
 
+    /*META: need to exchange metadata size and reset header size here*/
+    MPI_Offset* all_hdr_sizes = (MPI_Offset*) NCI_Malloc(rank * sizeof(MPI_Offset));
+    // Collect local header sizes from all processes
+    TRACE_COMM(MPI_Allgather)(&ncp->local_xsz, 1, MPI_OFFSET, all_hdr_sizes, 1, MPI_OFFSET, ncp->comm);
+    // Sum up local header size to get total header size
+    ncp->block_begins[0] = ncp->global_xsz;
+    for (int i = 1; i < nproc; i++) {
+        ncp->block_begins[i] = ncp->block_begins[i - 1] + all_hdr_sizes[i];
+    }
+    ncp->xsz = ncp->block_begins[nproc - 1];
+    NCI_Free(all_hdr_sizes);
+    
     if (ncp->safe_mode) { /* this consistency check is redundant as metadata is
                              kept consistent at all time when safe mode is on */
         int err, status;
@@ -280,7 +298,6 @@ NC_begins(NC *ncp)
             err = ncmpii_error_mpi2nc(mpireturn, "MPI_Bcast");
             DEBUG_RETURN_ERROR(err)
         }
-
         err = NC_NOERR;
         if (root_xsz != ncp->xsz) DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE)
 
@@ -326,19 +343,41 @@ NC_begins(NC *ncp)
      * loop thru vars, first pass is for the 'non-record' vars
      */
     end_var = ncp->begin_var;
-    for (j=0, i=0; i<ncp->vars.ndefined; i++) {
+    block_var_len = 0;
+    for ( i=0; i<ncp->vars.ndefined; i++) {
         /* skip record variables on this pass */
         if (IS_RECVAR(ncp->vars.value[i])) continue;
-
         if (first_var == NULL) first_var = ncp->vars.value[i];
 
         /* for CDF-1 check if over the file size limit 32-bit integer */
-        if (ncp->format == 1 && end_var > NC_MAX_INT)
+        if (ncp->format == 1 && block_var_len > NC_MAX_INT)
             DEBUG_RETURN_ERROR(NC_EVARSIZE)
 
         /* this will pad out non-record variables with the 4-byte alignment */
-        ncp->vars.value[i]->begin = D_RNDUP(end_var, 4);
+        ncp->vars.value[i]->begin = D_RNDUP(block_var_len, 4);
+        /* block_var_len is the end offset of variable i */
+        block_var_len = ncp->vars.value[i]->begin + ncp->vars.value[i]->len;
+    }
+    /* this will pad out variable block with the 4-byte alignment */
+    block_var_len = D_RNDUP(block_var_len, 4);
 
+    /* block_var_len now is pointing to the end of last non-record variable for this block */
+    TRACE_COMM(MPI_Scan)(&block_var_len, &block_end_var, 1, MPI_OFFSET, MPI_SUM, ncp->comm);
+    if (mpireturn != MPI_SUCCESS) {
+        err = ncmpii_error_mpi2nc(mpireturn, "MPI_Scan");
+        DEBUG_RETURN_ERROR(err)
+    }
+    block_var_tot_len = block_end_var;
+    TRACE_COMM(MPI_Bcast)(&block_var_tot_len, 1, MPI_OFFSET, nproc - 1, ncp->comm);
+    if (mpireturn != MPI_SUCCESS) {
+        err = ncmpii_error_mpi2nc(mpireturn, "MPI_Bcast");
+        DEBUG_RETURN_ERROR(err)
+    }
+    block_start_var = block_end_var - block_var_len;
+    /*Calibrate new var begins*/
+    for (j=0, i=0; i<ncp->vars.ndefined; i++) {
+        ncp->vars.value[i]->begin = ncp->begin_var + block_start_var;
+        //META: not sure if we need to do this for new header format
         if (ncp->old != NULL) {
             /* move to the next fixed variable */
             for (; j<ncp->old->vars.ndefined; j++)
@@ -353,11 +392,8 @@ NC_begins(NC *ncp)
                 j++;
             }
         }
-        /* end_var is the end offset of variable i */
-        end_var = ncp->vars.value[i]->begin + ncp->vars.value[i]->len;
     }
-
-    /* end_var now is pointing to the end of last non-record variable */
+    end_var += block_var_tot_len;
 
     /* only (re)calculate begin_rec if there is no sufficient space at end of
      * non-record variables or if the start of record variables is not aligned
@@ -385,7 +421,40 @@ NC_begins(NC *ncp)
     /* end_var now is pointing to the beginning of record variables
      * note that this can be larger than the end of last non-record variable
      */
+    //META: for record variables, also need to calibrate the record var begins
+        block_rec_var_len = 0;
+        for ( i=0; i<ncp->vars.ndefined; i++) {
+            /* skip record variables on this pass */
+            if (!IS_RECVAR(ncp->vars.value[i])) continue;
+            if (first_var == NULL) first_var = ncp->vars.value[i];
 
+            /* for CDF-1 check if over the file size limit 32-bit integer */
+            if (ncp->format == 1 && block_rec_var_len > NC_MAX_INT)
+                DEBUG_RETURN_ERROR(NC_EVARSIZE)
+
+            /* this will pad out non-record variables with the 4-byte alignment */
+            ncp->vars.value[i]->begin = D_RNDUP(block_rec_var_len, 4);
+            /* block_rec_var_len is the end offset of variable i */
+            block_rec_var_len = ncp->vars.value[i]->begin + ncp->vars.value[i]->len;
+        }
+
+    /* this will pad out variable block with the 4-byte alignment */
+        block_rec_var_len = D_RNDUP(block_rec_var_len, 4);
+
+        /* block_rec_var_len now is pointing to the end of last non-record variable for this block */
+        TRACE_COMM(MPI_Scan)(&block_rec_var_len, &block_end_rec_var, 1, MPI_OFFSET, MPI_SUM, ncp->comm);
+        if (mpireturn != MPI_SUCCESS) {
+            err = ncmpii_error_mpi2nc(mpireturn, "MPI_Scan");
+            DEBUG_RETURN_ERROR(err)
+        }
+        block_rec_var_tot_len = block_end_rec_var;
+        TRACE_COMM(MPI_Bcast)(&block_rec_var_tot_len, 1, MPI_OFFSET, nproc - 1, ncp->comm);
+        if (mpireturn != MPI_SUCCESS) {
+            err = ncmpii_error_mpi2nc(mpireturn, "MPI_Bcast");
+            DEBUG_RETURN_ERROR(err)
+        }
+        block_start_rec_var = block_end_rec_var - block_rec_var_len;
+     //end META
     ncp->recsize = 0;
 
     /* The alignment is only applicable to the section of record variables,
@@ -394,6 +463,7 @@ NC_begins(NC *ncp)
 
     /* loop thru vars, second pass is for the 'record' vars,
      * re-calculate the starting offset for each record variable */
+    //META: calibrate the record var begins
     for (j=0, i=0; i<ncp->vars.ndefined; i++) {
         if (!IS_RECVAR(ncp->vars.value[i]))
             /* skip non-record variables on this pass */
@@ -407,7 +477,7 @@ NC_begins(NC *ncp)
          * (either with range error or 'value read not that expected',
          * or with an error in ncmpi_redef()).  Not sufficient to align
          * 'begin', but haven't figured out what else to adjust */
-        ncp->vars.value[i]->begin = end_var;
+        ncp->vars.value[i]->begin = block_start_rec_var + ncp->begin_rec;
 
         if (ncp->old != NULL) {
             /* move to the next record variable */
@@ -421,17 +491,16 @@ NC_begins(NC *ncp)
                 j++;
             }
         }
-        end_var += ncp->vars.value[i]->len;
-        /* end_var is the end offset of record variable i */
-
-        /* check if record size must fit in 32-bits (for CDF-1) */
-#if SIZEOF_OFF_T == SIZEOF_SIZE_T && SIZEOF_SIZE_T == 4
-        if (ncp->recsize > NC_MAX_UINT - ncp->vars.value[i]->len)
-            DEBUG_RETURN_ERROR(NC_EVARSIZE)
-#endif
-        ncp->recsize += ncp->vars.value[i]->len;
-        last = ncp->vars.value[i];
+            #if SIZEOF_OFF_T == SIZEOF_SIZE_T && SIZEOF_SIZE_T == 4
+                    if (ncp->recsize > NC_MAX_UINT - ncp->vars.value[i]->len)
+                        DEBUG_RETURN_ERROR(NC_EVARSIZE)
+            #endif
+                    ncp->recsize += ncp->vars.value[i]->len;
+                /* end_var is the end offset of record variable i */
+                last = ncp->vars.value[i];
     }
+    end_var += block_rec_var_tot_len;
+        /* check if record size must fit in 32-bits (for CDF-1) */
 
     /*
      * for special case (Check CDF-1 and CDF-2 file format specifications.)
@@ -478,7 +547,7 @@ static int
 write_NC(NC *ncp)
 {
     int status=NC_NOERR, mpireturn, err, rank;
-    MPI_Offset i, header_wlen, ntimes;
+    MPI_Offset i, global_header_wlen, local_header_wlen, ntimes;
     MPI_Status mpistatus;
 
     assert(!NC_readonly(ncp));
@@ -488,50 +557,54 @@ write_NC(NC *ncp)
     /* In NC_begins(), root's ncp->xsz and ncp->begin_var, root's header
      * size and extent, have been broadcast (sync-ed) among processes.
      */
-
-#ifdef ENABLE_NULL_BYTE_HEADER_PADDING
-    /* NetCDF classic file formats require the file header null-byte padded.
-     * PnetCDF's default is not to write the padding area (between ncp->xsz and
-     * ncp->begin_var). When this padding feature is enabled, we write the
-     * padding area only when writing the header the first time, i.e. creating
-     * a new file, or the new header extent becomes larger than the old one.
-     */
-    if (ncp->old == NULL || ncp->begin_var > ncp->old->begin_var)
-        header_wlen = ncp->begin_var;
-    else
-        header_wlen = ncp->xsz;
-#else
-    /* Do not write padding area (between ncp->xsz and ncp->begin_var) */
-    header_wlen = ncp->xsz;
-#endif
-
-    header_wlen = _RNDUP(header_wlen, X_ALIGN);
+//TODO: decide if need to do this for new file format
+// #ifdef ENABLE_NULL_BYTE_HEADER_PADDING
+//     /* NetCDF classic file formats require the file header null-byte padded.
+//      * PnetCDF's default is not to write the padding area (between ncp->xsz and
+//      * ncp->begin_var). When this padding feature is enabled, we write the
+//      * padding area only when writing the header the first time, i.e. creating
+//      * a new file, or the new header extent becomes larger than the old one.
+//      */
+//     if (ncp->old == NULL || ncp->begin_var > ncp->old->begin_var)
+//         header_wlen = ncp->begin_var;
+//     else
+//         header_wlen = ncp->xsz;
+// #else
+    // /* Do not write padding area (between ncp->xsz and ncp->begin_var) */
+    // header_wlen = ncp->xsz;
+// #endif
+    global_header_wlen = ncp->global_xsz;
+    local_header_wlen = ncp->local_xsz;
+    global_header_wlen = _RNDUP(global_header_wlen, X_ALIGN);
+    local_header_wlen = _RNDUP(local_header_wlen, X_ALIGN);
 
     /* if header_wlen is > NC_MAX_INT, then write the header in chunks.
      * Note reading file header is already done in chunks. See
      * ncmpio_hdr_get_NC().
      */
-    ntimes = header_wlen / NC_MAX_INT;
-    if (header_wlen % NC_MAX_INT) ntimes++;
+    ntimes = global_header_wlen / NC_MAX_INT;
+    if (global_header_wlen % NC_MAX_INT) ntimes++;
 
     /* only rank 0's header gets written to the file */
+    /*META new header file: only rank 0 writes global header */
+    MPI_Offset offset, remain;
     if (rank == 0) {
         char *buf=NULL, *buf_ptr;
-        MPI_Offset offset, remain;
 
 #ifdef ENABLE_NULL_BYTE_HEADER_PADDING
         /* NetCDF classic file formats require the file header null-byte
          * padded. Thus we must calloc a buffer of size equal to file header
          * extent.
          */
-        buf = (char*)NCI_Calloc(header_wlen, 1);
+        buf = (char*)NCI_Calloc(global_header_wlen, 1);
 #else
         /* Do not write padding area (between ncp->xsz and ncp->begin_var) */
-        buf = (char*)NCI_Malloc(header_wlen);
+        buf = (char*)NCI_Malloc(global_header_wlen);
 #endif
 
         /* copy the entire local header object to buf */
-        status = ncmpio_hdr_put_NC(ncp, buf);
+        //META: need to change this function to to variants: global_header and local_header
+        status = ncmpio_global_hdr_put_NC(ncp, buf);
         if (status != NC_NOERR) /* a fatal error */
             goto fn_exit;
 
@@ -550,7 +623,7 @@ write_NC(NC *ncp)
 
         /* write the header in chunks */
         offset = 0;
-        remain = header_wlen;
+        remain = global_header_wlen;
         buf_ptr = buf;
         for (i=0; i<ntimes; i++) {
             int bufCount = (int) MIN(remain, NC_MAX_INT);
@@ -589,6 +662,64 @@ write_NC(NC *ncp)
             TRACE_IO(MPI_File_write_at_all)(ncp->collective_fh, 0, NULL,
                                             0, MPI_BYTE, &mpistatus);
     }
+
+        //META: all processes write the local header
+
+        /* copy the  local header object to buf */
+        //META: need to change this function to to variants: global_header and local_header
+        char *local_buf=NULL, *local_buf_ptr;
+        status = ncmpio_local_hdr_put_NC(ncp, local_buf);
+        if (status != NC_NOERR) /* a fatal error */
+            goto fn_exit;
+
+        /* For non-fatal error, we continue to write header to the file, as now
+         * the header object in memory has been sync-ed across all processes.
+         */
+
+        /* rank 0's fileview already includes the file header */
+
+        /* explicitly initialize mpistatus object to 0. For zero-length read,
+         * MPI_Get_count may report incorrect result for some MPICH version,
+         * due to the uninitialized MPI_Status object passed to MPI-IO calls.
+         * Thus we initialize it above to work around.
+         */
+        memset(&mpistatus, 0, sizeof(MPI_Status));
+
+        /* write the header in chunks */
+        //TODO: instead of directly ordered by rank, need to be able to use group id, consider when existing file is opened by a process with a specified block id
+        offset = ncp->block_begins[rank];
+        remain = local_header_wlen;
+        local_buf_ptr = local_buf;
+        for (i=0; i<ntimes; i++) {
+            int bufCount = (int) MIN(remain, NC_MAX_INT);
+            if (fIsSet(ncp->flags, NC_HCOLL))
+                TRACE_IO(MPI_File_write_at_all)(ncp->collective_fh, offset, local_buf_ptr,
+                                                bufCount, MPI_BYTE, &mpistatus);
+            else
+                TRACE_IO(MPI_File_write_at)(ncp->collective_fh, offset, local_buf_ptr,
+                                            bufCount, MPI_BYTE, &mpistatus);
+            if (mpireturn != MPI_SUCCESS) {
+                err = ncmpii_error_mpi2nc(mpireturn, "MPI_File_write_at");
+                /* write has failed, which is more serious than inconsistency */
+                if (err == NC_EFILE) DEBUG_ASSIGN_ERROR(status, NC_EWRITE)
+            }
+            else {
+                /* Update the number of bytes read since file open.
+                 * Because each rank writes no more than NC_MAX_INT at a time,
+                 * it is OK to call MPI_Get_count, instead of MPI_Get_count_c.
+                 */
+                int put_size;
+                mpireturn = MPI_Get_count(&mpistatus, MPI_BYTE, &put_size);
+                if (mpireturn != MPI_SUCCESS || put_size == MPI_UNDEFINED)
+                    ncp->put_size += bufCount;
+                else
+                    ncp->put_size += put_size;
+            }
+            offset  += bufCount;
+            local_buf_ptr += bufCount;
+            remain  -= bufCount;
+        }
+
 
 fn_exit:
     if (ncp->safe_mode == 1) {
@@ -990,7 +1121,7 @@ ncmpio__enddef(void       *ncdp,
     int i, num_fix_vars, mpireturn, err=NC_NOERR, status=NC_NOERR;
     char value[MPI_MAX_INFO_VAL];
     NC *ncp = (NC*)ncdp;
-
+    printf("\npncp->ncp->xsz: %lld\n", ncp->xsz);
     /* negative values of h_minfree, v_align, v_minfree, r_align have been
      * checked at dispatchers.
      */
