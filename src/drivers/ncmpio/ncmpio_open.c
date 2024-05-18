@@ -136,7 +136,7 @@ ncmpio_open(MPI_Comm     comm,
     }
 
     /* read header from file into NC object pointed by ncp -------------------*/
-    err = ncmpio_hdr_get_NC(ncp);
+    err = ncmpio_global_hdr_get_NC(ncp);
     if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
     else if (err != NC_NOERR) { /* fatal error */
         ncmpio_close_files(ncp, 0);
@@ -144,53 +144,28 @@ ncmpio_open(MPI_Comm     comm,
         return err;
     }
 
-#ifdef ENABLE_SUBFILING
-    if (ncp->subfile_mode) {
-        /* check subfiling attribute */
-        err = ncmpio_get_att(ncp, NC_GLOBAL, "_PnetCDF_SubFiling.num_subfiles",
-                             &ncp->num_subfiles, MPI_INT);
-        if (err == NC_NOERR && ncp->num_subfiles > 1) {
-            int i;
-            /* ignore error NC_ENOTATT if this attribute is not defined */
-            for (i=0; i<ncp->vars.ndefined; i++) {
-                /* variables may have different numbers of subfiles */
-                err = ncmpio_get_att(ncp, i, "_PnetCDF_SubFiling.num_subfiles",
-                             &ncp->vars.value[i]->num_subfiles,MPI_INT);
-                if (err == NC_ENOTATT) continue;
-                if (err != NC_NOERR) return err;
-                if (ncp->vars.value[i]->num_subfiles > 1) {
-                    /* find the orginal ndims of variable i */
-                    err = ncmpio_get_att(ncp,i,"_PnetCDF_SubFiling.ndims_org",
-                                 &ncp->vars.value[i]->ndims_org,MPI_INT);
-                    if (err != NC_NOERR) return err;
-                    ncp->vars.value[i]->dimids_org = (int*) NCI_Malloc(
-                              ncp->vars.value[i]->ndims_org * SIZEOF_INT);
-                    err = ncmpio_get_att(ncp,i,"_PnetCDF_SubFiling.dimids_org",
-                              ncp->vars.value[i]->dimids_org, MPI_INT);
-                    if (err != NC_NOERR) return err;
-                }
-            }
-            /* open subfile */
-            err = ncmpio_subfile_open(ncp);
-            if (err != NC_NOERR) return err;
-        }
-        else ncp->num_subfiles = 0;
-    }
-    else
-        ncp->num_subfiles = 0;
-#endif
-
 #ifndef SEARCH_NAME_LINEARLY
     /* initialize and populate name lookup tables ---------------------------*/
-    ncmpio_hash_table_populate_NC_dim(&ncp->dims, ncp->dims.hash_size);
-    ncmpio_hash_table_populate_NC_var(&ncp->vars, ncp->vars.hash_size);
-    ncmpio_hash_table_populate_NC_attr(ncp);
-    for (i=0; i<ncp->vars.ndefined; i++)
-        ncp->vars.value[i]->attrs.hash_size = ncp->hash_size_attr;
-#endif
+    // ncmpio_hash_table_populate_NC_dim(&ncp->dims, ncp->dims.hash_size);
+    // ncmpio_hash_table_populate_NC_var(&ncp->vars, ncp->vars.hash_size);
+    ncmpio_hash_table_populate_global_NC_attr(ncp);
+//     for (i=0; i<ncp->vars.ndefined; i++)
+//         ncp->vars.value[i]->attrs.hash_size = ncp->hash_size_attr;
+// #endif
 
     *ncpp = (void*)ncp;
 
     return status;
 }
 
+
+
+
+int
+ncmpio_open_block(void *ncdp, int block_id) /* OUT */
+{
+    int err=NC_NOERR;
+    char *nname=NULL; /* normalized name */
+    NC *ncp=(NC*)ncdp;
+    
+}

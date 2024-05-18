@@ -499,6 +499,13 @@ ncmpio_local_hdr_len_NC(const NC *ncp);
 extern int
 ncmpio_hdr_get_NC(NC *ncp);
 
+extern int
+ncmpio_global_hdr_get_NC(NC *ncp);
+
+extern int
+ncmpio_local_hdr_get_NC(NC *ncp);
+
+
 /* Begin defined in ncmpio_header_put.c -------------------------------------*/
 extern int
 ncmpio_hdr_put_NC(NC *ncp, void *buf);
@@ -596,6 +603,9 @@ ncmpio_hash_table_populate_NC_dim(NC_dimarray *dimsp, int hash_size);
 
 extern void
 ncmpio_hash_table_populate_NC_attr(NC *ncp);
+
+extern void
+ncmpio_hash_table_populate_global_NC_attr(NC *ncp);
 
 /* Begin defined in ncmpio_fill.c -------------------------------------------*/
 extern int

@@ -48,6 +48,7 @@ struct PNC_driver {
     /* APIs manipulate files */
     int (*create)(MPI_Comm, const char*, int, int, MPI_Info, void**);
     int (*open)(MPI_Comm, const char*, int, int, MPI_Info, void**);
+    int (*open_block)(void*, int, int);
     int (*close)(void*);
     int (*enddef)(void*);
     int (*_enddef)(void*,MPI_Offset,MPI_Offset,MPI_Offset,MPI_Offset);
@@ -130,6 +131,7 @@ struct PNC {
     int                format;      /* file format */
     char              *path;        /* path name */
     MPI_Comm           comm;        /* MPI communicator */
+    int                nblocks;     /* number of local header blocks */
     int                ndims;       /* number of dimensions defined */
     int                unlimdimid;  /* dim ID of NC_UNLIMITED */
     int                nvars;       /* number of variables */

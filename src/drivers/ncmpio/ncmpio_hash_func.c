@@ -414,3 +414,28 @@ ncmpio_hash_table_populate_NC_attr(NC *ncp)
         }
     }
 }
+
+/*----< ncmpio_hash_table_populate_global_NC_attr() >-------------------------------*/
+void
+ncmpio_hash_table_populate_global_NC_attr(NC *ncp)
+{
+    int i, j;
+    NC_nametable *nameT;
+
+    /* populate name lookup table of global attributes */
+
+    /* initialize attr name lookup table -------------------------------------*/
+    if (ncp->attrs.nameT == NULL && ncp->attrs.ndefined > 0)
+        ncp->attrs.nameT = NCI_Calloc(ncp->attrs.hash_size, sizeof(NC_nametable));
+
+    for (i=0; i<ncp->attrs.ndefined; i++) {
+        /* hash the var name into a key for name lookup */
+        int key = HASH_FUNC(ncp->attrs.value[i]->name, ncp->attrs.hash_size);
+        nameT = &ncp->attrs.nameT[key];
+        if (nameT->num % PNC_HLIST_GROWBY == 0)
+            nameT->list = (int*) NCI_Realloc(nameT->list, sizeof(int) *
+                                 (nameT->num + PNC_HLIST_GROWBY));
+        nameT->list[nameT->num] = i;
+        nameT->num++;
+    }
+}

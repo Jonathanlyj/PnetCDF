@@ -933,6 +933,96 @@ hdr_get_NC_attr(bufferinfo *gbp, NC_attr **attrpp)
     return status;
 }
 
+
+
+
+/*----< hdr_get_NC_blockarray() >---------------------------------------------*/
+/* For CDF-5 format, nelems (number of attributes) is of type non-negative
+ * INT64. However, argument nattrs in all PnetCDF/NetCDF APIs are of type int.
+ * Thus, we only need to use type int for internal metadata, ndefined. If
+ * nelems in the input file is more than NC_MAX_ATTRS, then it violates the
+ * format specifications (NC_EMAXATTS).
+ */
+static int
+hdr_get_NC_blockarray(bufferinfo *gbp, NC *ncp)
+{
+    /* netCDF file format:
+     *  ...
+     * block_offset list     = ABSENT | NC_BLOCK nelems [OFFSET ...]
+     * ABSENT       = ZERO  ZERO |  // list is not present for CDF-1 and 2
+     *                ZERO  ZERO64  // for CDF-5
+     * ZERO         = \x00 \x00 \x00 \x00                      // 32-bit zero
+     * ZERO64       = \x00 \x00 \x00 \x00 \x00 \x00 \x00 \x00  // 64-bit zero
+     * NC_DIMENSION = \x00 \x00 \x00 \x0A         // tag for list of dimensions
+     * nelems       = NON_NEG       // number of elements in following sequence
+     * NON_NEG      = <non-negative INT> |        // CDF-1 and CDF-2
+     *                <non-negative INT64>        // CDF-5
+     */
+    int i, err, status=NC_NOERR, nblocks=0;
+    size_t alloc_size;
+    NC_tag tag = NC_UNSPECIFIED;
+
+    assert(gbp != NULL && gbp->pos != NULL);
+    assert(ncp != NULL);
+    assert(ncp->value == NULL);
+
+    /* read NC_tag (NC_BLOCK or ABSENT) from gbp buffer */
+    err = hdr_get_NC_tag(gbp, &tag);
+    if (err != NC_NOERR) return err;
+
+    /* read nelems (number of blocks) from gbp buffer */
+    if (gbp->version < 5) { /* nelems is <non-negative INT> */
+        uint tmp;
+        err = hdr_get_uint32(gbp, &tmp);
+        if (err != NC_NOERR) return err;
+        /* cannot be more than max number of attributes */
+        nblocks = (int)tmp;
+    }
+    else { /* nelems is <non-negative INT64> */
+        uint64 tmp;
+        err = hdr_get_uint64(gbp, &tmp);
+        if (err != NC_NOERR) return err;
+        /* cannot be more than max number of attributes */
+        nblocks = (int)tmp;
+    }
+
+    /* Now nblocks is in between 0 and NC_MAX_ATTRS */
+    ncp->nblocks = nblocks;
+
+    /* From the CDF file format specification, the tag is either NC_BLOCK
+     * or ABSENT (ZERO), but we follow NetCDF library to skip checking the tag
+     * when nblocks is zero.
+     */
+    if (nblocks == 0) return NC_NOERR;
+
+    /* Now, nblocks > 0, tag must be NC_BLOCK */
+    if (tag != NC_BLOCK) {
+#ifdef PNETCDF_DEBUG
+        fprintf(stderr,"Error in file %s func %s line %d: NetCDF header corrupted, expecting tag NC_BLOCK but got %d\n",__FILE__,__func__,__LINE__,tag);
+#endif
+        DEBUG_RETURN_ERROR(NC_ENOTNC)
+    }
+
+    ncp->block_begins = (MPI_Offset*) NCI_Calloc(nblocks, SIZEOF_MPI_OFFSET);
+    /* get [OFFSET ...] */
+    for (i=0; i<nblocks; i++) {
+        if (gbp->version < 5) {
+            uint tmp;
+            err = hdr_get_uint32(gbp, &tmp);
+            if (err != NC_NOERR) break;
+            ncp->block_begins[i] = (MPI_Offset)tmp;
+        }
+        else {
+            uint64 tmp;
+            err = hdr_get_uint64(gbp, &tmp);
+            if (err != NC_NOERR) break;
+            ncp->block_begins[i] = (MPI_Offset)tmp;
+        }
+    }
+    if (err != NC_NOERR) return err;
+    return status;
+}
+
 /*----< hdr_get_NC_attrarray() >---------------------------------------------*/
 /* For CDF-5 format, nelems (number of attributes) is of type non-negative
  * INT64. However, argument nattrs in all PnetCDF/NetCDF APIs are of type int.
@@ -1408,7 +1498,6 @@ ncmpio_local_hdr_len_NC(const NC *ncp)
     xlen += hdr_len_NC_vararray(&ncp->vars,   sizeof_NON_NEG, sizeof_off_t); /* var_list */
     return xlen; /* return the header size (not yet aligned) */
 }
-
 /*----< ncmpio_hdr_get_NC() >------------------------------------------------*/
 /*  CDF format specification
  *      netcdf_file  = header  data
@@ -1543,6 +1632,114 @@ fn_exit:
     ncp->get_size += getbuf.get_size;
     NCI_Free(getbuf.base);
 
+    return (err == NC_NOERR) ? status : err;
+}
+/*----< ncmpio_global_hdr_get_NC() >------------------------------------------------*/
+/*  CDF format specification
+ *      netcdf_file  = header  data
+ *      header       = global_header local_header
+ *      global_header= magic numrecs gatt_list block_offset_list 
+*       gatt_list    = att_list
+ *      att_list     = ABSENT | NC_ATTRIBUTE  nelems  [attr ...]
+ *      block_offset = ABSENT | NC_BLOCK nelems [OFFSET ...]         //block offsets
+ *      local_header = [header_block ...]      //collection of blocked headers
+ *      header_block = dim_list var_list                     // local dims and vars within this block
+ */
+int
+ncmpio_global_hdr_get_NC(NC *ncp)
+{
+    int i, err, status=NC_NOERR;
+    bufferinfo getbuf;
+    char magic[NC_MAGIC_LEN];
+
+    assert(ncp != NULL);
+
+    /* Initialize the get buffer that stores the header read from the file */
+    getbuf.comm          = ncp->comm;
+    getbuf.collective_fh = ncp->collective_fh;
+    getbuf.get_size      = 0;
+    getbuf.offset        = 0;   /* read from start of the file */
+    getbuf.safe_mode     = ncp->safe_mode;
+    getbuf.rw_mode       = (fIsSet(ncp->flags, NC_HCOLL)) ? 1 : 0;
+
+    /* CDF-5's minimum header size is 4 bytes more than CDF-1 and CDF-2's */
+    getbuf.chunk = _RNDUP( MAX(MIN_NC_XSZ+4, ncp->chunk), X_ALIGN );
+
+    getbuf.base = (char*) NCI_Malloc(getbuf.chunk);
+    getbuf.pos  = getbuf.base;
+    getbuf.end  = getbuf.base + getbuf.chunk;
+
+    /* Fetch the next header chunk. The chunk is 'gbp->chunk' bytes big */
+    err = hdr_fetch(&getbuf);
+    if (err != NC_NOERR) return err;
+
+    /* processing the header from getbuf, the get buffer */
+
+    /* First get the file format information, magic */
+    err = ncmpix_getn_text((const void **)(&getbuf.pos), NC_MAGIC_LEN, magic);
+    if (err != NC_NOERR) return err;
+
+    /* check if the first three bytes are 'C','D','F' */
+    if (memcmp(magic, "CDF", 3) != 0) {
+        /* check if is HDF5 file */
+        char signature[8], *hdf5_signature="\211HDF\r\n\032\n";
+        ncmpix_getn_text((const void **)(&getbuf.pos), 8, signature);
+        if (memcmp(signature, hdf5_signature, 8) == 0) {
+            DEBUG_ASSIGN_ERROR(err, NC_ENOTNC3)
+            if (ncp->safe_mode)
+                fprintf(stderr,"Error: file %s is HDF5 format\n",ncp->path);
+        }
+        else
+            DEBUG_ASSIGN_ERROR(err, NC_ENOTNC)
+        goto fn_exit;
+    }
+
+    /* check version number in last byte of magic */
+    if (magic[3] == 0x1) {
+        getbuf.version = ncp->format = 1;
+    } else if (magic[3] == 0x2) {
+        getbuf.version = ncp->format = 2;
+    } else if (magic[3] == 0x5) {
+        getbuf.version = ncp->format = 5;
+    } else {
+        NCI_Free(getbuf.base);
+        DEBUG_RETURN_ERROR(NC_ENOTNC) /* not a netCDF file */
+    }
+
+    /* get numrecs from getbuf into ncp */
+    if (getbuf.version < 5) {
+        uint tmp=0;
+        err = hdr_get_uint32(&getbuf, &tmp);
+        if (err != NC_NOERR) goto fn_exit;
+        ncp->numrecs = (MPI_Offset)tmp;
+    }
+    else {
+        uint64 tmp=0;
+        err = hdr_get_uint64(&getbuf, &tmp);
+        if (err != NC_NOERR) goto fn_exit;
+        ncp->numrecs = (MPI_Offset)tmp;
+    }
+
+    assert(getbuf.pos < getbuf.end);
+    /* get gatt_list from getbuf into ncp */
+    err = hdr_get_NC_attrarray(&getbuf, &ncp->attrs);
+    if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
+    else if (err != NC_NOERR) goto fn_exit;
+
+    assert(getbuf.pos < getbuf.end);
+    /* get gatt_list from getbuf into ncp */
+    err = hdr_get_NC_blockarray(&getbuf, ncp);
+    if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
+    else if (err != NC_NOERR) goto fn_exit;
+
+    //META: skip var and dim list for new file format
+    /* get the un-aligned size occupied by the file header */
+    ncp->global_xsz = ncmpio_global_hdr_len_NC(ncp);
+ 
+    // ncp->xsz = ncp->block_begins[ncp->nblocks-1] + ncp->local_xsz;
+fn_exit:
+    ncp->get_size += getbuf.get_size;
+    NCI_Free(getbuf.base);
     return (err == NC_NOERR) ? status : err;
 }
 

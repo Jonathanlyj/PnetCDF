@@ -285,6 +285,7 @@ NC_begins(NC *ncp)
     for (int i = 1; i < nproc; i++) {
         ncp->block_begins[i] = ncp->block_begins[i - 1] + all_hdr_sizes[i];
     }
+    printf("\nrank %d, ncp->block_begins[i]: %lld", rank, ncp->block_begins[rank]);
     ncp->xsz = ncp->block_begins[nproc - 1];
     NCI_Free(all_hdr_sizes);
     

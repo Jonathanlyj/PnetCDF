@@ -523,6 +523,7 @@ ncmpi_create(MPI_Comm    comm,
     pncp->unlimdimid = -1;
     pncp->nvars      = 0;
     pncp->nrec_vars  = 0;
+    pncp->nblocks  = 0;
     pncp->vars       = NULL;
     pncp->flag       = NC_MODE_DEF | NC_MODE_CREATE;
     pncp->ncp        = ncp;
@@ -796,9 +797,65 @@ ncmpi_open(MPI_Comm    comm,
     if (safe_mode)                pncp->flag |= NC_MODE_SAFE;
     if (!relax_coord_bound)       pncp->flag |= NC_MODE_STRICT_COORD_BOUND;
 
+    /*META inquire number of blocks */
+    err = driver->inq(pncp->ncp, NULL, NULL, NULL,
+                      NULL,  &pncp->nblocks);
+    if (err != NC_NOERR) goto fn_exit;
+
+fn_exit:
+    if (err != NC_NOERR) {
+        driver->close(ncp); /* close file and ignore error */
+        if (pncp->comm != MPI_COMM_WORLD && pncp->comm != MPI_COMM_SELF)
+            MPI_Comm_free(&pncp->comm); /* a collective call */
+        del_from_PNCList(*ncidp);
+        NCI_Free(pncp->path);
+        NCI_Free(pncp);
+        *ncidp = -1;
+        if (status == NC_NOERR) status = err;
+    }
+
+    return status;
+}
+
+
+/*META----< ncmpi_inq_nblocks() >-------------------------------------------------------*/
+int
+ncmpi_inq_nblocks(int ncid, int *nblocks)
+{
+    int err;
+    PNC *pncp;
+
+    /* check if ncid is valid */
+    err = PNC_check_id(ncid, &pncp);
+    if (err != NC_NOERR) return err;
+
+    *nblocks = pncp->nblocks;
+    return NC_NOERR;
+}
+
+int
+ncmpi_open_block(int ncid, int block_id)
+{
+    int i, j, nalloc, rank, nprocs, format, status=NC_NOERR, err;
+    int safe_mode=0, mpireturn, DIMIDS[_NDIMS_], *dimids;
+    char *env_str;
+    MPI_Info combined_info;
+    PNC_driver *driver;
+    int err;
+    PNC *pncp;
+
+    /* check if ncid is valid */
+    err = PNC_check_id(ncid, &pncp);
+    if (err != NC_NOERR) return err;
+
+
+    MPI_Comm_rank(pncp->comm, &rank);
+    MPI_Comm_size(pncp->comm, &nprocs);
+    /* calling the subroutine that implements ncmpi_open_block() */
+    err = pncp->driver->open_block(pncp->ncp, block_id);
     /* inquire number of dimensions, variables defined and rec dim ID */
     err = driver->inq(pncp->ncp, &pncp->ndims, &pncp->nvars, NULL,
-                      &pncp->unlimdimid);
+                      &pncp->unlimdimid, NULL);//nblocks has been obtained in ncmpi_open
     if (err != NC_NOERR) goto fn_exit;
 
     if (pncp->nvars == 0) return status; /* no variable defined in the file */
@@ -873,6 +930,9 @@ fn_exit:
 
     return status;
 }
+
+
+
 
 /*----< ncmpi_close() >------------------------------------------------------*/
 /* This is a collective subroutine. */
@@ -1510,6 +1570,39 @@ ncmpi_inq_num_fix_vars(int ncid, int *num_fix_varsp)
             (*num_fix_varsp)++;
     }
     */
+
+    return NC_NOERR;
+}
+
+
+
+/*----< META ncmpi_inq_num_blocks() >-------------------------------------------*/
+/* This is an independent subroutine. */
+int
+ncmpi_inq_num_rec_vars(int ncid, int *nblocks)
+{
+    int err;
+    PNC *pncp;
+
+    /* check if ncid is valid */
+    err = PNC_check_id(ncid, &pncp);
+    if (err != NC_NOERR) return err;
+
+    if (nblocks == NULL) return NC_NOERR;
+
+#ifdef ENABLE_NETCDF4
+    if (pncp->format == NC_FORMAT_NETCDF4 ||
+        pncp->format == NC_FORMAT_NETCDF4_CLASSIC) {
+        /* calling the subroutine that implements ncmpi_inq_num_rec_vars() */
+        return pncp->driver->inq_misc(pncp->ncp, NULL, NULL, NULL,
+                                      nblocks, NULL, NULL, NULL, NULL,
+                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        }
+#endif
+
+    *nblocks = pncp->nblocks;
+
+
 
     return NC_NOERR;
 }

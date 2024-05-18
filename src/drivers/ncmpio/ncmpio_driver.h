@@ -18,6 +18,9 @@ extern int
 ncmpio_open(MPI_Comm comm, const char *path, int omode, int ncid, MPI_Info info, void **ncdp);
 
 extern int
+ncmpio_open_block(void *ncdp, int block_id);
+
+extern int
 ncmpio_close(void *ncdp);
 
 extern int
@@ -45,7 +48,7 @@ extern int
 ncmpio_fill_var_rec(void *ncdp, int varid, MPI_Offset recno);
 
 extern int
-ncmpio_inq(void *ncdp, int *ndimsp, int *nvarsp, int *nattsp, int *xtendimp);
+ncmpio_inq(void *ncdp, int *ndimsp, int *nvarsp, int *nattsp, int *xtendimp, int *nblocksp);
 
 extern int
 ncmpio_inq_misc(void *ncdp, int *pathlen, char *path, int *num_fix_varsp,

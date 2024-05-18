@@ -231,7 +231,8 @@ ncmpio_inq(void *ncdp,
            int  *ndimsp,
            int  *nvarsp,
            int  *nattsp,
-           int  *xtendimp)
+           int  *xtendimp,
+           int  *nblocksp)
 {
     NC *ncp = (NC*)ncdp;
 
@@ -239,6 +240,7 @@ ncmpio_inq(void *ncdp,
     if (nvarsp   != NULL) *nvarsp   = ncp->vars.ndefined;
     if (nattsp   != NULL) *nattsp   = ncp->attrs.ndefined;
     if (xtendimp != NULL) *xtendimp = ncp->dims.unlimited_id;
+    if (nblocksp != NULL) *nblocksp = ncp->nblocks;
 
     return NC_NOERR;
 }
