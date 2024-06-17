@@ -182,8 +182,8 @@ ncmpio_open(MPI_Comm     comm,
 
 #ifndef SEARCH_NAME_LINEARLY
     /* initialize and populate name lookup tables ---------------------------*/
-    ncmpio_hash_table_populate_NC_dim(&ncp->dims, ncp->dims.hash_size);
-    ncmpio_hash_table_populate_NC_var(&ncp->vars, ncp->vars.hash_size);
+    ncmpio_hash_table_populate_NC_dim(&ncp->dims, ncp->hash_size_dim);
+    ncmpio_hash_table_populate_NC_var(&ncp->vars, ncp->hash_size_var);
     ncmpio_hash_table_populate_NC_attr(ncp);
     for (i=0; i<ncp->vars.ndefined; i++)
         ncp->vars.value[i]->attrs.hash_size = ncp->hash_size_attr;

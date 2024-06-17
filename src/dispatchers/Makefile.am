@@ -27,6 +27,7 @@ M4_SRCS  = attr_getput.m4 \
 C_SRCS = lib_version.c \
          file.c \
          dimension.c \
+         block.c \
          variable.c \
          attribute.c \
          error_codes.c

@@ -43,7 +43,7 @@ define(`GOTO_CHECK',`{ DEBUG_ASSIGN_ERROR(err, $1) goto err_check; }')dnl
     }                                                                         \
     if (varp.recdim >= 0) { /* find current numrec if varp is record var */   \
         MPI_Offset numrecs;                                                   \
-        err = pncp->driver->inq_dim(pncp->ncp, varp.recdim, NULL, &numrecs);  \
+        err = pncp->driver->inq_dim(pncp->ncp, 0, varp.recdim, NULL, &numrecs);  \
         if (err != NC_NOERR) {                                                \
             reqMode |= NC_REQ_ZERO;                                           \
             NCI_Free(start);                                                  \
@@ -113,7 +113,7 @@ int check_EEDGE(const MPI_Offset *start,
             char name[1024];                                                \
             int _rank;                                                      \
             MPI_Comm_rank(MPI_COMM_WORLD, &_rank);                          \
-            pncp->driver->inq_var(pncp->ncp, varid, name, NULL, NULL,       \
+            pncp->driver->inq_var(pncp->ncp, NULL, varid, name, NULL, NULL,       \
                                   NULL, NULL, NULL, NULL, NULL);            \
             if (stride != NULL)                                             \
                 fprintf(stderr, "Rank %d: NC_EEDGE variable %s: shape[%d]=%lld but start[%d]=%lld count[%d]=%lld stride[%d]=%lld\n", \
@@ -145,7 +145,7 @@ int check_start_count_stride(PNC              *pncp,
     shape = pncp->vars[varid].shape;
     /* if record variable, obtain the current size of record dimension */
     if (pncp->vars[varid].recdim >= 0) {
-        err = pncp->driver->inq_dim(pncp->ncp, pncp->vars[varid].recdim, NULL,
+        err = pncp->driver->inq_dim(pncp->ncp, 0, pncp->vars[varid].recdim, NULL,
                                     &shape[0]);
         if (err != NC_NOERR) return err;
     }

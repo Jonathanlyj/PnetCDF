@@ -241,7 +241,201 @@ move_record_vars(NC *ncp, NC *old) {
     }
     return NC_NOERR;
 }
+/*--------------< hdr_put_NC_modified_blockarray() >----------------------------------------------*/
+//META: this is just for MPI comm at enddef
+static int
+hdr_put_NC_modified_blockarray(const NC_blockarray *ncpb, bufferinfo *pbp){
+    /* netCDF file format:
+     *  ...
+     * block_offset list     = ABSENT | NC_BLOCK nelems [block_info ...]
+     * block_info            = name OFFSET bsize
+     * ABSENT       = ZERO  ZERO |  // list is not present for CDF-1 and 2
+     *                ZERO  ZERO64  // for CDF-5
+     * ZERO         = \x00 \x00 \x00 \x00                      // 32-bit zero
+     * ZERO64       = \x00 \x00 \x00 \x00 \x00 \x00 \x00 \x00  // 64-bit zero
+     * NC_DIMENSION = \x00 \x00 \x00 \x0A         // tag for list of dimensions
+     * nelems       = NON_NEG       // number of elements in following sequence
+     * NON_NEG      = <non-negative INT> |        // CDF-1 and CDF-2
+     *                <non-negative INT64>        // CDF-5
+     */
+    int i, status, n_modified_blocks = 0;
 
+
+    for (i=0; i<ncpb->ndefined; i++) {
+        if (ncpb->value[i]->modified) {
+            n_modified_blocks++;
+        }
+    }
+    assert(pbp != NULL);
+
+    if (ncpb == NULL || n_modified_blocks == 0) { /* ABSENT */
+        status = ncmpix_put_uint32((void**)(&pbp->pos), NC_UNSPECIFIED);
+        if (status != NC_NOERR) return status;
+
+        /* put a ZERO or ZERO64 depending on which CDF format */
+        status = ncmpix_put_uint32((void**)(&pbp->pos), 0);
+        if (status != NC_NOERR) return status;
+    }
+    else {
+        /* copy NC_BLOCK */
+        status = ncmpix_put_uint32((void**)(&pbp->pos), NC_BLOCK);
+        if (status != NC_NOERR) return status;
+
+        /* copy nelems */
+
+        status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)n_modified_blocks);
+        if (status != NC_NOERR) return status;
+
+        /* copy name OFFSET block_size*/
+    /* copy [dimid ...] */
+    for (i=0; i<ncpb->ndefined; i++) {
+        if (ncpb->value[i]->modified) {
+            //copy block id
+
+            status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)i);
+            if (status != NC_NOERR) return status;
+            //copy block name
+            status = hdr_put_NC_name(pbp, ncpb->value[i]->name);
+            //copy block size
+            status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncpb->value[i]->xsz);
+            if (status != NC_NOERR) return status;
+            }
+        }
+    }
+
+    return NC_NOERR;
+}
+static int serialize_bufferinfo_array(NC *ncp, void *buf){
+    bufferinfo sendbuff;
+    int err;
+    sendbuff.pos           = buf;
+    sendbuff.base          = buf;
+    err = hdr_put_NC_modified_blockarray(&ncp->blocks, &sendbuff);
+    if (err != NC_NOERR) {
+        DEBUG_RETURN_ERROR(err)
+    }
+    return err;
+}
+
+static MPI_Offset
+hdr_len_NC_modified_blockarray(const NC_blockarray *ncpb) {
+    size_t buffer_size = 0;
+    int n_modified_blocks = 0;
+
+    // Count the number of modified blocks
+    for (int i = 0; i < ncpb->ndefined; i++) {
+        if (ncpb->value[i]->modified) {
+            n_modified_blocks++;
+        }
+    }
+
+    if (ncpb == NULL || n_modified_blocks == 0) {
+        // If no modified blocks, size is for ABSENT case
+        buffer_size += sizeof(uint32_t); // NC_UNSPECIFIED
+
+        buffer_size += sizeof(uint32_t); // ZERO
+
+    } else {
+        // Size for NC_BLOCK and number of elements
+        buffer_size += sizeof(uint32_t); // NC_BLOCK
+        buffer_size += sizeof(uint32_t); // number of elements
+
+        // Size for each modified block
+        for (int i = 0; i < ncpb->ndefined; i++) {
+            if (ncpb->value[i]->modified) {
+                buffer_size += sizeof(uint32_t); // block ID
+                buffer_size += strlen(ncpb->value[i]->name); // block name
+                buffer_size += sizeof(uint32_t); // block size
+            }
+        }
+    }
+
+    return buffer_size;
+}
+
+
+static int deserialize_bufferinfo_array(NC *ncp, void *buf, int *recv_displs, int *new_block_offsets){
+    bufferinfo recvbuff;
+    int err;
+    recvbuff.pos           = buf;
+    recvbuff.base          = buf;
+    size_t length = sizeof(recv_displs) / sizeof(recv_displs[0]);
+    int nproc = (int)length;
+    for (int i=0; i<nproc; i++){
+        recvbuff.pos = recvbuff.base + recv_displs[i];
+        err = hdr_get_NC_modified_blockarray(&recvbuff, &ncp->blocks, i, new_block_offsets);
+        if (err != NC_NOERR) {
+            return err;
+        }
+    }
+
+}
+/*--------------< hdr_get_NC_modified_blockarray() >----------------------------------------------*/
+int
+hdr_get_NC_modified_blockarray(bufferinfo *pbp, NC_blockarray *ncpb, int src_rank, int *new_block_offsets) {
+    int i, status;
+    uint32_t nelems;
+    uint64_t nelems64;
+
+    assert(pbp != NULL);
+    assert(ncpb != NULL);
+
+    /* Read the NC_BLOCK or ABSENT indicator */
+    uint32_t indicator;
+    status = ncmpix_get_uint32((const void**)(&pbp->pos), &indicator);
+    if (status != NC_NOERR) return status;
+
+    if (indicator == NC_UNSPECIFIED) {
+        /* Read ZERO or ZERO64 */
+        uint32_t zero;
+        status = ncmpix_get_uint32((const void**)(&pbp->pos), &zero);
+        if (status != NC_NOERR) return status;
+        return NC_NOERR;
+    }
+
+    /* Read the number of elements */
+
+    status = ncmpix_get_uint32((const void**)(&pbp->pos), &nelems);
+    if (status != NC_NOERR) return status;
+
+
+
+    /* Allocate memory for the blocks */
+    // ncp->blocks = (NC_blockarray *)malloc(sizeof(NC_blockarray));
+    // ncp->blocks.ndefined = nelems;
+    // ncp->blocks.value = (NC_block **)malloc(nelems * sizeof(NC_block*));
+
+    /* Read each block */
+    int block_index;
+    for (int i = 0;i < nelems;i++) {
+        // Read block id
+        uint32_t block_id;
+        status = ncmpix_get_uint32((const void**)(&pbp->pos), &block_id);
+        if (status != NC_NOERR) return status;
+        if (block_id < ncpb->nread){
+            block_index = (int)block_id;
+            if (ncpb->value[block_index]->modified) {
+                //Two process modified the same block, should error our
+                return NC_EINVAL;
+            }
+        }else{
+            block_index = (int)block_id + new_block_offsets[src_rank];
+        }
+
+        // Read block name
+        status = hdr_get_NC_name(pbp, &ncpb->value[block_index]->name, &ncpb->value[block_index]->name_len);
+        if (status != NC_NOERR) return status;
+
+        // Read block size
+        uint32_t block_size;
+        status = ncmpix_get_uint32((const void**)(&pbp->pos), &block_size);
+        if (status != NC_NOERR) return status;
+        ncpb->value[block_index]->xsz = block_size;
+        // ncpb->value[i]->modified = 1;  // Since it's in the modified block list
+    }
+
+    return NC_NOERR;
+}
 /*----< NC_begins() >--------------------------------------------------------*/
 /*
  * This function is only called at enddef().
@@ -258,8 +452,9 @@ NC_begins(NC *ncp)
 {
     int i, j, rank, nproc, mpireturn;
     MPI_Offset end_var = 0;
-    MPI_Offset block_var_len = 0, block_start_var = 0, block_end_var = 0, block_var_tot_len = 0; //META: for non-reconrd var begins
-    MPI_Offset block_rec_var_len = 0, block_start_rec_var = 0, block_end_rec_var = 0, block_rec_var_tot_len = 0; //META: for reconrd var begins
+    MPI_Offset global_header_wlen, local_header_wlen;
+    MPI_Offset block_var_len = 0, block_start_var = 0, block_end_var = 0, block_var_tot_len = 0; //META: for non-record var begins
+    MPI_Offset block_rec_var_len = 0, block_start_rec_var = 0, block_end_rec_var = 0, block_rec_var_tot_len = 0; //META: for record var begins
     NC_var *last = NULL;
     NC_var *first_var = NULL;       /* first "non-record" var */
     int err;
@@ -271,22 +466,23 @@ NC_begins(NC *ncp)
     MPI_Comm_rank(ncp->comm, &rank);
     MPI_Comm_size(ncp->comm, &nproc);
     ncp->global_xsz = ncmpio_global_hdr_len_NC(ncp);
-    ncp->local_xsz = ncmpio_local_hdr_len_NC(ncp);
-    printf("\nrank %d, pncp->ncp->global_xsz: %lld", rank, ncp->global_xsz);
-    printf("\nrank %d, pncp->ncp->local_xsz: %lld", rank, ncp->local_xsz);
-
-    /*META: need to exchange metadata size and reset header size here*/
-    MPI_Offset* all_hdr_sizes = (MPI_Offset*) NCI_Malloc(nproc * sizeof(MPI_Offset));
-    // Collect local header sizes from all processes
-    TRACE_COMM(MPI_Allgather)(&ncp->local_xsz, 1, MPI_OFFSET, all_hdr_sizes, 1, MPI_OFFSET, ncp->comm);
-    ncp->block_begins = (MPI_Offset*) NCI_Malloc(nproc * sizeof(MPI_Offset));
-    // Sum up local header size to get total header size
-    ncp->block_begins[0] = ncp->global_xsz;
-    for (int i = 1; i < nproc; i++) {
-        ncp->block_begins[i] = ncp->block_begins[i - 1] + all_hdr_sizes[i];
+    global_header_wlen = _RNDUP(ncp->global_xsz, X_ALIGN);
+    local_header_wlen = 0;
+    //META: get the local header size
+    for(int i=0;i<ncp->blocks.ndefined;i++){
+        local_header_wlen += ncp->blocks.value[i]->xsz;
+        if(i==0){
+            ncp->blocks.value[i]->begin = global_header_wlen;
+        }else{
+            ncp->blocks.value[i]->begin += ncp->blocks.value[i-1]->xsz + ncp->blocks.value[i-1]->begin;
+        }
     }
-    ncp->xsz = ncp->block_begins[nproc - 1];
-    NCI_Free(all_hdr_sizes);
+    ncp->xsz = global_header_wlen + _RNDUP(local_header_wlen, X_ALIGN);
+    //META: get the total header size
+
+    // ncp->blocks.value[0]->xsz = ncmpio_local_hdr_len_NC(ncp->blocks.value[0]);
+    printf("\nrank %d, pncp->ncp->global_xsz: %lld", rank, ncp->global_xsz);
+
     
     if (ncp->safe_mode) { /* this consistency check is redundant as metadata is
                              kept consistent at all time when safe mode is on */
@@ -320,11 +516,14 @@ NC_begins(NC *ncp)
      * Note ncp->xsz is header size and ncp->begin_var is header extent.
      * Add the minimum header free space requested by user.
      */
-    if (ncp->vars.ndefined > 0)
-        ncp->begin_var = D_RNDUP(ncp->xsz + ncp->h_minfree, ncp->h_align);
-    else /* no variable defined, ignore alignment and set header extent to
-          * header size */
-        ncp->begin_var = ncp->xsz;
+
+    //META: always assumes if vars are defined for now. Need MPI comm to tell whether all blocks has vars defined
+    // if (ncp->vars.ndefined > 0)
+    //     ncp->begin_var = D_RNDUP(ncp->xsz + ncp->h_minfree, ncp->h_align);
+    // else /* no variable defined, ignore alignment and set header extent to
+    //       * header size */
+    //     ncp->begin_var = ncp->xsz;
+    ncp->begin_var = D_RNDUP(ncp->xsz + ncp->h_minfree, ncp->h_align);
 
     if (ncp->old != NULL) {
         /* If this define mode was entered from a redef(), we check whether
@@ -343,22 +542,29 @@ NC_begins(NC *ncp)
     /* Now calculate the starting file offsets for all variables.
      * loop thru vars, first pass is for the 'non-record' vars
      */
+    NC_block *local_block;
     end_var = ncp->begin_var;
     block_var_len = 0;
-    for ( i=0; i<ncp->vars.ndefined; i++) {
-        /* skip record variables on this pass */
-        if (IS_RECVAR(ncp->vars.value[i])) continue;
-        if (first_var == NULL) first_var = ncp->vars.value[i];
+    for (int j=0; j<ncp->blocks.ndefined; j++){
+        if (j<ncp->blocks.value[j]->modified){
+            local_block = ncp->blocks.value[j];
+            for (int i=0; i<ncp->blocks.value[j]->vars.ndefined; i++) {
+                    /* skip record variables on this pass */
+                    if (IS_RECVAR(local_block->vars.value[i])) continue;
+                    if (first_var == NULL) first_var = local_block->vars.value[i];
 
-        /* for CDF-1 check if over the file size limit 32-bit integer */
-        if (ncp->format == 1 && block_var_len > NC_MAX_INT)
-            DEBUG_RETURN_ERROR(NC_EVARSIZE)
+                    /* for CDF-1 check if over the file size limit 32-bit integer */
+                    if (ncp->format == 1 && block_var_len > NC_MAX_INT)
+                        DEBUG_RETURN_ERROR(NC_EVARSIZE)
 
-        /* this will pad out non-record variables with the 4-byte alignment */
-        ncp->vars.value[i]->begin = D_RNDUP(block_var_len, 4);
-        /* block_var_len is the end offset of variable i */
-        block_var_len = ncp->vars.value[i]->begin + ncp->vars.value[i]->len;
+                    /* this will pad out non-record variables with the 4-byte alignment */
+                    local_block->vars.value[i]->begin = D_RNDUP(block_var_len, 4);
+                    /* block_var_len is the end offset of variable i */
+                    block_var_len = local_block->vars.value[i]->begin + local_block->vars.value[i]->len;
+                }
+        }
     }
+    
     /* this will pad out variable block with the 4-byte alignment */
     block_var_len = D_RNDUP(block_var_len, 4);
 
@@ -378,21 +584,21 @@ NC_begins(NC *ncp)
     /*Calibrate new var begins*/
     for (j=0, i=0; i<ncp->vars.ndefined; i++) {
         ncp->vars.value[i]->begin = ncp->begin_var + block_start_var;
-        //META: not sure if we need to do this for new header format
-        if (ncp->old != NULL) {
-            /* move to the next fixed variable */
-            for (; j<ncp->old->vars.ndefined; j++)
-                if (!IS_RECVAR(ncp->old->vars.value[j]))
-                    break;
-            if (j < ncp->old->vars.ndefined) {
-                if (ncp->vars.value[i]->begin < ncp->old->vars.value[j]->begin)
-                    /* the first ncp->vars.ndefined non-record variables should
-                       be the same. If the new begin is smaller, reuse the old
-                       begin */
-                    ncp->vars.value[i]->begin = ncp->old->vars.value[j]->begin;
-                j++;
-            }
-        }
+        //META: No need to do this for new header format; the order that var is written to file can be different
+        // if (ncp->old != NULL) {
+        //     /* move to the next fixed variable */
+        //     for (; j<ncp->old->vars.ndefined; j++)
+        //         if (!IS_RECVAR(ncp->old->vars.value[j]))
+        //             break;
+        //     if (j < ncp->old->vars.ndefined) {
+        //         if (ncp->vars.value[i]->begin < ncp->old->vars.value[j]->begin)
+        //             /* the first ncp->vars.ndefined non-record variables should
+        //                be the same. If the new begin is smaller, reuse the old
+        //                begin */
+        //             ncp->vars.value[i]->begin = ncp->old->vars.value[j]->begin;
+        //         j++;
+        //     }
+        // }
     }
     end_var += block_var_tot_len;
 
@@ -423,38 +629,45 @@ NC_begins(NC *ncp)
      * note that this can be larger than the end of last non-record variable
      */
     //META: for record variables, also need to calibrate the record var begins
-        block_rec_var_len = 0;
-        for ( i=0; i<ncp->vars.ndefined; i++) {
-            /* skip record variables on this pass */
-            if (!IS_RECVAR(ncp->vars.value[i])) continue;
-            if (first_var == NULL) first_var = ncp->vars.value[i];
 
-            /* for CDF-1 check if over the file size limit 32-bit integer */
-            if (ncp->format == 1 && block_rec_var_len > NC_MAX_INT)
-                DEBUG_RETURN_ERROR(NC_EVARSIZE)
+    block_rec_var_len = 0;
+    for (int j=0; j<ncp->blocks.ndefined; j++){
+        if (j<ncp->blocks.value[j]->modified){
+            local_block = ncp->blocks.value[j];
+            for ( i=0; i<local_block->vars.ndefined; i++) {
+                /* skip record variables on this pass */
+                if (!IS_RECVAR(local_block->vars.value[i])) continue;
+                if (first_var == NULL) first_var = local_block->vars.value[i];
 
-            /* this will pad out non-record variables with the 4-byte alignment */
-            ncp->vars.value[i]->begin = D_RNDUP(block_rec_var_len, 4);
-            /* block_rec_var_len is the end offset of variable i */
-            block_rec_var_len = ncp->vars.value[i]->begin + ncp->vars.value[i]->len;
+                /* for CDF-1 check if over the file size limit 32-bit integer */
+                if (ncp->format == 1 && block_rec_var_len > NC_MAX_INT)
+                    DEBUG_RETURN_ERROR(NC_EVARSIZE)
+
+                /* this will pad out non-record variables with the 4-byte alignment */
+                local_block->vars.value[i]->begin = D_RNDUP(block_rec_var_len, 4);
+                /* block_rec_var_len is the end offset of variable i */
+                block_rec_var_len = local_block->vars.value[i]->begin + local_block->vars.value[i]->len;
+            }
         }
+    }
 
     /* this will pad out variable block with the 4-byte alignment */
-        block_rec_var_len = D_RNDUP(block_rec_var_len, 4);
+    block_rec_var_len = D_RNDUP(block_rec_var_len, 4);
 
-        /* block_rec_var_len now is pointing to the end of last non-record variable for this block */
-        TRACE_COMM(MPI_Scan)(&block_rec_var_len, &block_end_rec_var, 1, MPI_OFFSET, MPI_SUM, ncp->comm);
-        if (mpireturn != MPI_SUCCESS) {
-            err = ncmpii_error_mpi2nc(mpireturn, "MPI_Scan");
-            DEBUG_RETURN_ERROR(err)
-        }
-        block_rec_var_tot_len = block_end_rec_var;
-        TRACE_COMM(MPI_Bcast)(&block_rec_var_tot_len, 1, MPI_OFFSET, nproc - 1, ncp->comm);
-        if (mpireturn != MPI_SUCCESS) {
-            err = ncmpii_error_mpi2nc(mpireturn, "MPI_Bcast");
-            DEBUG_RETURN_ERROR(err)
-        }
-        block_start_rec_var = block_end_rec_var - block_rec_var_len;
+    /* block_rec_var_len now is pointing to the end of last non-record variable for this block */
+    //META: TODO: combine this with the previous MPIscan
+    TRACE_COMM(MPI_Scan)(&block_rec_var_len, &block_end_rec_var, 1, MPI_OFFSET, MPI_SUM, ncp->comm);
+    if (mpireturn != MPI_SUCCESS) {
+        err = ncmpii_error_mpi2nc(mpireturn, "MPI_Scan");
+        DEBUG_RETURN_ERROR(err)
+    }
+    block_rec_var_tot_len = block_end_rec_var;
+    TRACE_COMM(MPI_Bcast)(&block_rec_var_tot_len, 1, MPI_OFFSET, nproc - 1, ncp->comm);
+    if (mpireturn != MPI_SUCCESS) {
+        err = ncmpii_error_mpi2nc(mpireturn, "MPI_Bcast");
+        DEBUG_RETURN_ERROR(err)
+    }
+    block_start_rec_var = block_end_rec_var - block_rec_var_len;
      //end META
     ncp->recsize = 0;
 
@@ -465,40 +678,45 @@ NC_begins(NC *ncp)
     /* loop thru vars, second pass is for the 'record' vars,
      * re-calculate the starting offset for each record variable */
     //META: calibrate the record var begins
-    for (j=0, i=0; i<ncp->vars.ndefined; i++) {
-        if (!IS_RECVAR(ncp->vars.value[i]))
-            /* skip non-record variables on this pass */
-            continue;
+    for (int j=0; j<ncp->blocks.ndefined; j++){
+        if (j<ncp->blocks.value[j]->modified){
+            local_block = ncp->blocks.value[j];
+            for (j=0, i=0; i<local_block->vars.ndefined; i++) {
+                if (!IS_RECVAR(local_block->vars.value[i]))
+                    /* skip non-record variables on this pass */
+                    continue;
 
-        /* NC_MAX_INT is the max of 32-bit integer */
-        if (ncp->format == 1 && end_var > NC_MAX_INT)
-            DEBUG_RETURN_ERROR(NC_EVARSIZE)
+                /* NC_MAX_INT is the max of 32-bit integer */
+                if (ncp->format == 1 && end_var > NC_MAX_INT)
+                    DEBUG_RETURN_ERROR(NC_EVARSIZE)
 
-        /* A few attempts at aligning record variables have failed
-         * (either with range error or 'value read not that expected',
-         * or with an error in ncmpi_redef()).  Not sufficient to align
-         * 'begin', but haven't figured out what else to adjust */
-        ncp->vars.value[i]->begin = block_start_rec_var + ncp->begin_rec;
+                /* A few attempts at aligning record variables have failed
+                * (either with range error or 'value read not that expected',
+                * or with an error in ncmpi_redef()).  Not sufficient to align
+                * 'begin', but haven't figured out what else to adjust */
+                local_block->vars.value[i]->begin = block_start_rec_var + ncp->begin_rec;
 
-        if (ncp->old != NULL) {
-            /* move to the next record variable */
-            for (; j<ncp->old->vars.ndefined; j++)
-                if (IS_RECVAR(ncp->old->vars.value[j]))
-                    break;
-            if (j < ncp->old->vars.ndefined) {
-                if (ncp->vars.value[i]->begin < ncp->old->vars.value[j]->begin)
-                    /* if the new begin is smaller, use the old begin */
-                    ncp->vars.value[i]->begin = ncp->old->vars.value[j]->begin;
-                j++;
+                if (ncp->old != NULL) {
+                    /* move to the next record variable */
+                    for (; j<ncp->old->vars.ndefined; j++)
+                        if (IS_RECVAR(ncp->old->vars.value[j]))
+                            break;
+                    if (j < ncp->old->vars.ndefined) {
+                        if (local_block->vars.value[i]->begin < ncp->old->vars.value[j]->begin)
+                            /* if the new begin is smaller, use the old begin */
+                            local_block->vars.value[i]->begin = ncp->old->vars.value[j]->begin;
+                        j++;
+                    }
+                }
+                    #if SIZEOF_OFF_T == SIZEOF_SIZE_T && SIZEOF_SIZE_T == 4
+                            if (ncp->recsize > NC_MAX_UINT - local_block->vars.value[i]->len)
+                                DEBUG_RETURN_ERROR(NC_EVARSIZE)
+                    #endif
+                            ncp->recsize += local_block->vars.value[i]->len;
+                        /* end_var is the end offset of record variable i */
+                        last = local_block->vars.value[i];
             }
         }
-            #if SIZEOF_OFF_T == SIZEOF_SIZE_T && SIZEOF_SIZE_T == 4
-                    if (ncp->recsize > NC_MAX_UINT - ncp->vars.value[i]->len)
-                        DEBUG_RETURN_ERROR(NC_EVARSIZE)
-            #endif
-                    ncp->recsize += ncp->vars.value[i]->len;
-                /* end_var is the end offset of record variable i */
-                last = ncp->vars.value[i];
     }
     end_var += block_rec_var_tot_len;
         /* check if record size must fit in 32-bits (for CDF-1) */
@@ -576,9 +794,9 @@ write_NC(NC *ncp)
 // #endif
     global_header_wlen = ncp->global_xsz;
     
-    local_header_wlen = ncp->local_xsz;
+
     global_header_wlen = _RNDUP(global_header_wlen, X_ALIGN);
-    local_header_wlen = _RNDUP(local_header_wlen, X_ALIGN);
+    
 
     /* if header_wlen is > NC_MAX_INT, then write the header in chunks.
      * Note reading file header is already done in chunks. See
@@ -606,7 +824,6 @@ write_NC(NC *ncp)
 #endif
 
         /* copy the entire local header object to buf */
-        //META: need to change this function to to variants: global_header and local_header
         status = ncmpio_global_hdr_put_NC(ncp, buf);
         if (status != NC_NOERR) /* a fatal error */
             goto fn_exit;
@@ -666,32 +883,39 @@ write_NC(NC *ncp)
                                             0, MPI_BYTE, &mpistatus);
     }
 
-        //META: all processes write the local header
+    //META: all processes write the local header
 
-        /* copy the  local header object to buf */
-        //META: need to change this function to to variants: global_header and local_header
-        char *local_buf=NULL,    *local_buf_ptr;
+    /* copy the  local header object to buf */
+    for (int i = 0; i < ncp->blocks.ndefined; i++) {
+        if (ncp->blocks.value[i]->modified != 1){
+            if (fIsSet(ncp->flags, NC_HCOLL))
+                TRACE_IO(MPI_File_write_at_all)(ncp->collective_fh, 0, NULL,
+                                                0, MPI_BYTE, &mpistatus);
+            continue;
+        } //skip the block that hasn't been modified
+        char *local_buf=NULL, *local_buf_ptr;
+        local_header_wlen = _RNDUP(ncp->blocks.value[i]->xsz, X_ALIGN);
         local_buf = (char*)NCI_Malloc(local_header_wlen);
-        status = ncmpio_local_hdr_put_NC(ncp, local_buf);
+        status = ncmpio_local_hdr_put_NC(ncp, local_buf, i);
         if (status != NC_NOERR) /* a fatal error */
             goto fn_exit;
 
         /* For non-fatal error, we continue to write header to the file, as now
-         * the header object in memory has been sync-ed across all processes.
-         */
+        * the header object in memory has been sync-ed across all processes.
+        */
 
         /* rank 0's fileview already includes the file header */
 
         /* explicitly initialize mpistatus object to 0. For zero-length read,
-         * MPI_Get_count may report incorrect result for some MPICH version,
-         * due to the uninitialized MPI_Status object passed to MPI-IO calls.
-         * Thus we initialize it above to work around.
-         */
+        * MPI_Get_count may report incorrect result for some MPICH version,
+        * due to the uninitialized MPI_Status object passed to MPI-IO calls.
+        * Thus we initialize it above to work around.
+        */
         memset(&mpistatus, 0, sizeof(MPI_Status));
 
         /* write the header in chunks */
-        //TODO: instead of directly ordered by rank, need to be able to use group id, consider when existing file is opened by a process with a specified block id
-        offset = ncp->block_begins[rank];
+        //TODO: instead of directly ordered by rank, need to be able to use block id, consider when existing file is opened by a process with a specified block id
+        offset = ncp->blocks.value[i]->begin;
         remain = local_header_wlen;
         local_buf_ptr = local_buf;
         for (i=0; i<ntimes; i++) {
@@ -709,9 +933,9 @@ write_NC(NC *ncp)
             }
             else {
                 /* Update the number of bytes read since file open.
-                 * Because each rank writes no more than NC_MAX_INT at a time,
-                 * it is OK to call MPI_Get_count, instead of MPI_Get_count_c.
-                 */
+                * Because each rank writes no more than NC_MAX_INT at a time,
+                * it is OK to call MPI_Get_count, instead of MPI_Get_count_c.
+                */
                 int put_size;
                 mpireturn = MPI_Get_count(&mpistatus, MPI_BYTE, &put_size);
                 if (mpireturn != MPI_SUCCESS || put_size == MPI_UNDEFINED)
@@ -724,6 +948,10 @@ write_NC(NC *ncp)
             remain  -= bufCount;
         }
         NCI_Free(local_buf);
+            
+        
+    }
+        
 
 fn_exit:
     if (ncp->safe_mode == 1) {
@@ -1123,6 +1351,7 @@ ncmpio__enddef(void       *ncdp,
                MPI_Offset  r_align)
 {
     int i, num_fix_vars, mpireturn, err=NC_NOERR, status=NC_NOERR;
+    int rank, nproc;
     char value[MPI_MAX_INFO_VAL];
     NC *ncp = (NC*)ncdp;
     printf("\npncp->ncp->xsz: %lld\n", ncp->xsz);
@@ -1248,6 +1477,102 @@ ncmpio__enddef(void       *ncdp,
      * Note in NC_begins, root broadcasts ncp->xsz, the file header size, to
      * all processes.
      */
+
+    //META:Merge block arrays: collect all modified blocks from all processes
+    MPI_Comm_rank(ncp->comm, &rank);
+    MPI_Comm_size(ncp->comm, &nproc);
+
+    //STEP1: communicate number of new blocks across all processes
+    int num_new_blocks;
+    num_new_blocks = ncp->blocks.ndefined - ncp->blocks.nread;
+    int* all_num_news = (int*) NCI_Malloc(nproc * X_SIZEOF_INT);
+
+    // Collect local header sizes from all processes
+
+    TRACE_COMM(MPI_Allgather)(&num_new_blocks, 1, MPI_INT, all_num_news, 1, MPI_INT, ncp->comm);
+    int total_new_blocks = 0;
+    int* new_block_offsets = (int*) NCI_Malloc(nproc * X_SIZEOF_INT);
+    new_block_offsets[0] = 0;
+    for (int i = 0; i < nproc; i++) {
+        total_new_blocks += all_num_news[i];
+        if(i>0) new_block_offsets[i] = new_block_offsets[i-1] + all_num_news[i-1];
+        }
+
+    //STEP2: communicate all modified blocks content across all processes
+    MPI_Offset local_buff_size;
+    local_buff_size = hdr_len_NC_modified_blockarray(&ncp->blocks);
+    char* local_buff = (char*) NCI_Malloc(local_buff_size);
+    err = serialize_bufferinfo_array(ncp, local_buff);
+    CHECK_ERROR(err);
+  // Communicate the sizes of the header structure for each process
+    MPI_Offset* all_collection_sizes = (MPI_Offset*) NCI_Malloc(nproc * sizeof(MPI_Offset));
+    TRACE_COMM(MPI_Allgather)(&local_buff_size, 1, MPI_OFFSET, all_collection_sizes, 1, MPI_OFFSET, ncp->comm);
+
+    // Calculate displacements for the second phase
+    int* recv_displs = (int*) NCI_Malloc(nproc * sizeof(int));
+    int total_recv_size = all_collection_sizes[0];
+    recv_displs[0] = 0;
+    for (int i = 1; i < nproc; ++i) {
+        recv_displs[i] = recv_displs[i - 1] + all_collection_sizes[i - 1];
+        total_recv_size += all_collection_sizes[i];
+        
+    }
+    char* all_collections_buffer = (char*) NCI_Malloc(total_recv_size);
+
+    int* recvcounts =  (int*)NCI_Malloc(nproc * sizeof(int));
+    for (int i = 0; i < nproc; ++i) {
+        recvcounts[i] = (int)all_collection_sizes[i];
+    }
+
+    TRACE_COMM(MPI_Allgatherv)(local_buff, local_buff_size, MPI_BYTE, all_collections_buffer, recvcounts, recv_displs, MPI_BYTE, ncp->comm);
+
+    //STEP3: adjust local block array based on the newly collected blocks
+    int new_total = total_new_blocks + ncp->blocks.nread;
+    ncp->blocks.value = (NC_block**) NCI_Realloc(ncp->blocks.value, new_total * sizeof(NC_block*));
+    ncp->blocks.localids = (int*) NCI_Realloc(ncp->blocks.localids, new_total * X_SIZEOF_INT);
+    ncp->blocks.globalids = (int*) NCI_Realloc(ncp->blocks.globalids, new_total * X_SIZEOF_INT);
+
+    /*
+    example: rank0 ABCDE|FG rank1 ABCDE|H  rank2 ABCDE|I ->   ABCDE|FGHI
+    after merging rank0 globalids should be 01234|5678 rank1 should be 01234|7568
+    */
+    
+    for(int i=ncp->blocks.ndefined; i<new_total;i++){
+        ncp->blocks.value[i] = (NC_block*) NCI_Malloc(sizeof(NC_block));
+    }
+
+    for(int i=ncp->blocks.nread; i<ncp->blocks.ndefined;i++){
+        ncp->blocks.value[i + new_block_offsets[rank]] = ncp->blocks.value[i];
+        ncp->blocks.globalids[i] = i +  new_block_offsets[rank];
+        ncp->blocks.value[i] = NULL;
+    }
+    //rank1 globalids is now 01234|7 _ _ _
+    for(int i=0;i<new_block_offsets[rank];i++){
+        ncp->blocks.globalids[ncp->blocks.nread + all_num_news[rank] + i] = ncp->blocks.nread + i;
+    }
+    //rank1 globalids is now 01234|7 5 6 _
+    for(int i=ncp->blocks.nread +  + all_num_news[rank] + new_block_offsets[rank]; i<new_total;i++){
+        ncp->blocks.globalids[i] = i;
+    }
+    //rank1 globalids is now 01234|7 5 6 8
+    //Update localid accordingly
+    for(int i=0; i<new_total;i++){
+        ncp->blocks.localids[ncp->blocks.globalids[i]] = i;
+    }
+
+    //STEP4: Deseralize buffer to global block array (only name and block size info)
+    err = deserialize_bufferinfo_array(ncp, all_collections_buffer, recv_displs, new_block_offsets);
+    ncp->blocks.ndefined = new_total;
+
+    CHECK_ERROR(err);
+
+    NCI_Free(local_buff);
+    NCI_Free(all_num_news);
+    NCI_Free(all_collection_sizes);
+    NCI_Free(recv_displs);
+    NCI_Free(recvcounts);
+    NCI_Free(all_collections_buffer);
+
     err = NC_begins(ncp);
     printf("\nafter NC begin ncp->global_xsz: %lld", ncp->global_xsz);
     CHECK_ERROR(err)
@@ -1318,6 +1643,7 @@ ncmpio__enddef(void       *ncdp,
      * writes the header to file. Note safe_mode error check will be done in
      * write_NC() */
     printf("\nbewfore write NC ncp->global_xsz: %lld", ncp->global_xsz);
+
     status = write_NC(ncp);
 
     /* we should continue to exit define mode, even if header is inconsistent

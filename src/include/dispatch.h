@@ -63,10 +63,15 @@ struct PNC_driver {
     int (*end_indep_data)(void*);
 
     /* APIs manipulate dimensions */
-    int (*def_dim)(void*,const char*,MPI_Offset,int*);
-    int (*inq_dimid)(void*,const char*,int*);
-    int (*inq_dim)(void*,int,char*,MPI_Offset*);
-    int (*rename_dim)(void*, int, const char*);
+    int (*def_dim)(void*,int,const char*,MPI_Offset,int*);
+    int (*inq_dimid)(void*,int,const char*,int*);
+    int (*inq_dim)(void*,int,int,char*,MPI_Offset*);
+    int (*rename_dim)(void*,int,int,const char*);
+
+    /*META APIs manipulate blocks */
+    int (*def_block)(void*,const char*,int*);
+    int (*inq_blkid)(void*,const char*,int*);
+
 
     /* APIs read/write attributes */
     int (*inq_att)(void*,int,const char*,nc_type*,MPI_Offset*);
@@ -79,12 +84,12 @@ struct PNC_driver {
     int (*put_att)(void*,int,const char*,nc_type,MPI_Offset,const void*,MPI_Datatype);
 
     /* APIs read/write variables */
-    int (*def_var)(void*,const char*,nc_type,int,const int*,int*);
-    int (*def_var_fill)(void*,int,int,const void*);
-    int (*fill_var_rec)(void*,int,MPI_Offset);
-    int (*inq_var)(void*,int,char*,nc_type*,int*,int*,int*,MPI_Offset*,int*,void*);
-    int (*inq_varid)(void*,const char*,int*);
-    int (*rename_var)(void*,int,const char*);
+    int (*def_var)(void*,int,const char*,nc_type,int,const int*,int*);
+    int (*def_var_fill)(void*,int,int,int,const void*);
+    int (*fill_var_rec)(void*,int,int,MPI_Offset);
+    int (*inq_var)(void*,int,int,char*,nc_type*,int*,int*,int*,MPI_Offset*,int*,void*);
+    int (*inq_varid)(void*,const char*,int,int*);
+    int (*rename_var)(void*,int,int,const char*);
 
     int (*get_var)(void*,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,void*,MPI_Offset,MPI_Datatype,int);
     int (*put_var)(void*,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const void*,MPI_Offset,MPI_Datatype,int);
@@ -132,7 +137,8 @@ struct PNC {
     MPI_Comm           comm;        /* MPI communicator */
     int                ndims;       /* number of dimensions defined */
     int                unlimdimid;  /* dim ID of NC_UNLIMITED */
-    int                nvars;       /* number of variables */
+    int                nvars;       /* number of variables defined */
+    int                nblocks;       /* number of blocks */
     int                nrec_vars;   /* number of record variables */
     struct PNC_var    *vars;        /* array of variable objects */
     void              *ncp;         /* pointer to driver internal object */

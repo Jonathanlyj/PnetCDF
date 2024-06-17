@@ -398,6 +398,8 @@ nc_strerror(int ncerr1)
 	 return "NetCDF: Index exceeds dimension bound";
       case NC_EMAXDIMS:
 	 return "NetCDF: NC_MAX_DIMS or NC_MAX_VAR_DIMS exceeded"; /* not enforced after 4.5.0 */
+    //   case NC_EMAXBLKS:
+	//  return "NetCDF: NC_MAX_INT exceeded"; /* not enforced after 4.5.0 */
       case NC_ENAMEINUSE:
 	 return "NetCDF: String match to name in use";
       case NC_ENOTATT:
@@ -408,6 +410,8 @@ nc_strerror(int ncerr1)
 	 return "NetCDF: Not a valid data type or _FillValue type mismatch";
       case NC_EBADDIM:
 	 return "NetCDF: Invalid dimension ID or name";
+    //   case NC_EBADBLK:
+	//  return "NetCDF: Invalid block ID or name";
       case NC_EUNLIMPOS:
 	 return "NetCDF: NC_UNLIMITED in the wrong index";
       case NC_EMAXVARS:
@@ -603,6 +607,7 @@ ncmpi_strerrno(int err)
         case (NC_EMAXATTS):			return "NC_EMAXATTS";
         case (NC_EBADTYPE):			return "NC_EBADTYPE";
         case (NC_EBADDIM):			return "NC_EBADDIM";
+        // case (NC_EBADBLK):			return "NC_EBADBLK";
         case (NC_EUNLIMPOS):			return "NC_EUNLIMPOS";
         case (NC_EMAXVARS):			return "NC_EMAXVARS";
         case (NC_ENOTVAR):			return "NC_ENOTVAR";

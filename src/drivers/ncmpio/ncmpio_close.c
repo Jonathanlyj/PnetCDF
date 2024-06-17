@@ -32,15 +32,41 @@
 #include "ncmpio_subfile.h"
 #endif
 
+// /*----< ncmpio_free_NC() >----------------------------------------------------*/
+// void
+// ncmpio_free_NC(NC *ncp)
+// {
+//     if (ncp == NULL) return;
+
+//     ncmpio_free_NC_dimarray(&ncp->dims);
+//     ncmpio_free_NC_attrarray(&ncp->attrs);
+//     ncmpio_free_NC_vararray(&ncp->vars);
+
+//     /* The only case that ncp->mpiinfo is MPI_INFO_NULL is when exiting endef
+//      * from a redef. All other cases reaching here are from ncmpi_close, in
+//      * which case ncp->mpiinfo is never MPI_INFO_NULL.
+//      */
+//     if (ncp->mpiinfo != MPI_INFO_NULL) MPI_Info_free(&ncp->mpiinfo);
+
+//     if (ncp->get_list != NULL) NCI_Free(ncp->get_list);
+//     if (ncp->put_list != NULL) NCI_Free(ncp->put_list);
+//     if (ncp->abuf     != NULL) NCI_Free(ncp->abuf);
+//     if (ncp->path     != NULL) NCI_Free(ncp->path);
+//     if (ncp->block_begins     != NULL) NCI_Free(ncp->block_begins);
+
+//     NCI_Free(ncp);
+// }
+
 /*----< ncmpio_free_NC() >----------------------------------------------------*/
 void
 ncmpio_free_NC(NC *ncp)
 {
     if (ncp == NULL) return;
 
-    ncmpio_free_NC_dimarray(&ncp->dims);
+    // ncmpio_free_NC_dimarray(&ncp->dims);
     ncmpio_free_NC_attrarray(&ncp->attrs);
-    ncmpio_free_NC_vararray(&ncp->vars);
+    ncmpio_free_NC_blockarray(&ncp->blocks);
+    // ncmpio_free_NC_vararray(&ncp->vars);
 
     /* The only case that ncp->mpiinfo is MPI_INFO_NULL is when exiting endef
      * from a redef. All other cases reaching here are from ncmpi_close, in
@@ -52,7 +78,9 @@ ncmpio_free_NC(NC *ncp)
     if (ncp->put_list != NULL) NCI_Free(ncp->put_list);
     if (ncp->abuf     != NULL) NCI_Free(ncp->abuf);
     if (ncp->path     != NULL) NCI_Free(ncp->path);
-    if (ncp->block_begins     != NULL) NCI_Free(ncp->block_begins);
+    // if (ncp->block_begins     != NULL) NCI_Free(ncp->block_begins);
+    ncp->hash_size_var = 0;
+    ncp->hash_size_dim = 0;
 
     NCI_Free(ncp);
 }

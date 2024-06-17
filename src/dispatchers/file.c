@@ -816,47 +816,47 @@ ncmpi_open(MPI_Comm    comm,
     }
 
     dimids = DIMIDS;
-
+    //META: cannot construct pncp->vars becasue block is not read yet.
     /* construct array of PNC_var for all variables */
-    for (i=0; i<pncp->nvars; i++) {
-        int ndims, max_ndims=_NDIMS_;
-        pncp->vars[i].shape  = NULL;
-        pncp->vars[i].recdim = -1;   /* if fixed-size variable */
-        err = driver->inq_var(pncp->ncp, i, NULL, &pncp->vars[i].xtype, &ndims,
-                              NULL, NULL, NULL, NULL, NULL);
-        if (err != NC_NOERR) break; /* loop i */
-        pncp->vars[i].ndims = ndims;
+    // for (i=0; i<pncp->nvars; i++) {
+    //     int ndims, max_ndims=_NDIMS_;
+    //     pncp->vars[i].shape  = NULL;
+    //     pncp->vars[i].recdim = -1;   /* if fixed-size variable */
+    //     err = driver->inq_var(pncp->ncp, i, NULL, &pncp->vars[i].xtype, &ndims,
+    //                           NULL, NULL, NULL, NULL, NULL);
+    //     if (err != NC_NOERR) break; /* loop i */
+    //     pncp->vars[i].ndims = ndims;
 
-        if (ndims > 0) {
-            pncp->vars[i].shape = (MPI_Offset*)
-                                  NCI_Malloc(ndims * SIZEOF_MPI_OFFSET);
-            if (ndims > max_ndims) { /* avoid repeated malloc */
-                if (dimids == DIMIDS) dimids = NULL;
-                dimids = (int*) NCI_Realloc(dimids, ndims * SIZEOF_INT);
-                max_ndims = ndims;
-            }
-            err = driver->inq_var(pncp->ncp, i, NULL, NULL, NULL,
-                                  dimids, NULL, NULL, NULL, NULL);
-            if (err != NC_NOERR) break; /* loop i */
-            if (dimids[0] == pncp->unlimdimid)
-                pncp->vars[i].recdim = pncp->unlimdimid;
-            for (j=0; j<ndims; j++) {
-                /* obtain size of dimension j */
-                err = driver->inq_dim(pncp->ncp, dimids[j], NULL,
-                                      pncp->vars[i].shape+j);
-                if (err != NC_NOERR) break; /* loop i */
-            }
-        }
-        if (pncp->vars[i].recdim >= 0) pncp->nrec_vars++;
-    }
-    if (err != NC_NOERR) { /* error happens in loop i */
-        assert(i < pncp->nvars);
-        for (j=0; j<=i; j++) {
-            if (pncp->vars[j].shape != NULL)
-                NCI_Free(pncp->vars[j].shape);
-        }
-        NCI_Free(pncp->vars);
-    }
+    //     if (ndims > 0) {
+    //         pncp->vars[i].shape = (MPI_Offset*)
+    //                               NCI_Malloc(ndims * SIZEOF_MPI_OFFSET);
+    //         if (ndims > max_ndims) { /* avoid repeated malloc */
+    //             if (dimids == DIMIDS) dimids = NULL;
+    //             dimids = (int*) NCI_Realloc(dimids, ndims * SIZEOF_INT);
+    //             max_ndims = ndims;
+    //         }
+    //         err = driver->inq_var(pncp->ncp, i, NULL, NULL, NULL,
+    //                               dimids, NULL, NULL, NULL, NULL);
+    //         if (err != NC_NOERR) break; /* loop i */
+    //         if (dimids[0] == pncp->unlimdimid)
+    //             pncp->vars[i].recdim = pncp->unlimdimid;
+    //         for (j=0; j<ndims; j++) {
+    //             /* obtain size of dimension j */
+    //             err = driver->inq_dim(pncp->ncp, dimids[j], NULL,
+    //                                   pncp->vars[i].shape+j);
+    //             if (err != NC_NOERR) break; /* loop i */
+    //         }
+    //     }
+    //     if (pncp->vars[i].recdim >= 0) pncp->nrec_vars++;
+    // }
+    // if (err != NC_NOERR) { /* error happens in loop i */
+    //     assert(i < pncp->nvars);
+    //     for (j=0; j<=i; j++) {
+    //         if (pncp->vars[j].shape != NULL)
+    //             NCI_Free(pncp->vars[j].shape);
+    //     }
+    //     NCI_Free(pncp->vars);
+    // }
     if (dimids != DIMIDS) NCI_Free(dimids);
 
 fn_exit:

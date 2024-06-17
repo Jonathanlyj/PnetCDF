@@ -701,16 +701,18 @@ ncmpio_fill_vars(NC *ncp)
  * this API is collective, must be called in data mode */
 int
 ncmpio_fill_var_rec(void      *ncdp,
-                    int        varid,
+                    int       blkid,
+                    int       varid,
                     MPI_Offset recno) /* record index, ignored if non-record var */
 {
     int     indx, err=NC_NOERR;
     NC     *ncp=(NC*)ncdp;
     NC_var *varp=NULL;
-
+    //convert local blkid to global blkid
+    blkid = ncp->blocks.globalids[blkid]
     /* check whether variable ID is valid */
     /* sanity check for ncdp and varid has been done in dispatchers */
-    varp = ncp->vars.value[varid];
+    varp = ncp->blocks.value[blkid]->vars.value[varid];
 
     /* error if this is not a record variable */
     if (!IS_RECVAR(varp)) {
@@ -822,6 +824,7 @@ ncmpio_set_fill(void *ncdp,
 /* this API is collective, and must be called in define mode */
 int
 ncmpio_def_var_fill(void       *ncdp,
+                    int         blkid,
                     int         varid,
                     int         no_fill,    /* 1: no fill, 0: fill */
                     const void *fill_value) /* when NULL, use default fill value */
@@ -830,8 +833,10 @@ ncmpio_def_var_fill(void       *ncdp,
     NC *ncp=(NC*)ncdp;
     NC_var *varp=NULL;
 
+    //conert to global blkid
+    blkid = ncp->blocks.globalids[blkid];
     /* sanity check for ncdp and varid has been done in dispatchers */
-    varp = ncp->vars.value[varid];
+    varp = ncp->blocks[blkid]->vars.value[varid];
 
     if (ncp->safe_mode) {
         int root_ids[3], my_fill_null, minE, mpireturn;

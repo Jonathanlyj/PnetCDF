@@ -192,37 +192,40 @@ void ncmpio_set_pnetcdf_hints(NC *ncp,
         }
     }
 
-    ncp->dims.hash_size = PNC_HSIZE_DIM;
+    ncp->hash_size_dim = PNC_HSIZE_DIM;
     if (user_info != MPI_INFO_NULL) {
         /* Hash table size for dimensions */
         MPI_Info_get(user_info, "nc_hash_size_dim", MPI_MAX_INFO_VAL-1,
                      value, &flag);
         if (flag) {
             errno = 0;  /* errno must set to zero before calling atoi */
-            ncp->dims.hash_size = atoi(value);
-            if (errno != 0 || ncp->dims.hash_size < 0)
-                ncp->dims.hash_size = PNC_HSIZE_DIM;
-            sprintf(value, "%d", ncp->dims.hash_size);
+            ncp->hash_size_dim = atoi(value);
+            if (errno != 0 || ncp->hash_size_dim < 0)
+                ncp->hash_size_dim = PNC_HSIZE_DIM;
+            sprintf(value, "%d", ncp->hash_size_dim);
         }
     }
     if (!flag) sprintf(value, "%d", PNC_HSIZE_DIM);
     MPI_Info_set(info_used, "nc_hash_size_dim", value);
 
-    ncp->vars.hash_size = PNC_HSIZE_VAR;
+    ncp->hash_size_var = PNC_HSIZE_VAR;
     if (user_info != MPI_INFO_NULL) {
         /* Hash table size for variables */
         MPI_Info_get(user_info, "nc_hash_size_var", MPI_MAX_INFO_VAL-1,
                      value, &flag);
         if (flag) {
             errno = 0;  /* errno must set to zero before calling atoi */
-            ncp->vars.hash_size = atoi(value);
-            if (errno != 0 || ncp->vars.hash_size < 0)
-                ncp->vars.hash_size = PNC_HSIZE_VAR;
-            sprintf(value, "%d", ncp->vars.hash_size);
+            ncp->hash_size_var = atoi(value);
+            if (errno != 0 || ncp->hash_size_var < 0)
+                ncp->hash_size_var = PNC_HSIZE_VAR;
+            sprintf(value, "%d", ncp->hash_size_var);
         }
     }
     if (!flag) sprintf(value, "%d", PNC_HSIZE_VAR);
     MPI_Info_set(info_used, "nc_hash_size_var", value);
+
+    //META:
+    ncp->blocks.hash_size = PNC_HSIZE_DIM;
 
     ncp->attrs.hash_size = PNC_HSIZE_GATTR;
     if (user_info != MPI_INFO_NULL) {

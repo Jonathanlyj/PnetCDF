@@ -102,6 +102,7 @@ typedef struct NC NC; /* forward reference */
  */
 #define PNC_HSIZE_DIM    256
 #define PNC_HSIZE_VAR    256
+#define PNC_HSIZE_BLK    256
 #define PNC_HSIZE_VATTR    8  /* attributes per variable */
 #define PNC_HSIZE_GATTR   64  /* global attributes */
 
@@ -145,7 +146,6 @@ typedef struct {
  * which means the total number of defined dimension allowed in a file
  * is up to 2^31-1. Thus, the member ndefined below should be of type int.
  * In fact, the value of ndefined should be between 0 and NC_MAX_DIMS.
- *
  * We use name ndefined for number of defined dimensions, instead of "nelems"
  * used in the CDF format specifications because the number can only be of
  * data type int (signed 4-byte integer). Other "nelems" in the format
@@ -154,8 +154,8 @@ typedef struct {
 typedef struct NC_dimarray {
     int            ndefined;      /* number of defined dimensions */
     int            unlimited_id;  /* -1 for not defined, otherwise >= 0 */
+    int           hash_size;
     NC_dim       **value;
-    int            hash_size;
     NC_nametable  *nameT;
                    /* Hash table for quick name lookup.
                     * indices 0, 1, ... hash_size-1 are the hash keys.
@@ -165,12 +165,14 @@ typedef struct NC_dimarray {
                     */
 } NC_dimarray;
 
+
+
+
+extern int
+ncmpio_dup_NC_dimarray(NC_dimarray *ncap, const NC_dimarray *ref, int hash_size_dim);
 /* Begin defined in dim.c ---------------------------------------------------*/
 extern void
 ncmpio_free_NC_dimarray(NC_dimarray *ncap);
-
-extern int
-ncmpio_dup_NC_dimarray(NC_dimarray *ncap, const NC_dimarray *ref);
 
 /*
  * NC attribute
@@ -265,9 +267,9 @@ typedef struct {
 /* note: we only allow less than 2^31-1 variables defined in a file */
 typedef struct NC_vararray {
     int            ndefined;    /* number of defined variables */
+    int            hash_size;
     int            num_rec_vars;/* number of defined record variables */
     NC_var       **value;
-    int            hash_size;
     NC_nametable  *nameT;
                    /* Hash table for quick name lookup.
                     * indices 0, 1, ... hash_size-1 are the hash keys.
@@ -277,6 +279,42 @@ typedef struct NC_vararray {
                     */
 } NC_vararray;
 
+
+
+// typedef struct NC_blockinfo {
+//     size_t       name_len;/* strlen(name) for faster string compare */
+//     char         *name;    /* name of the variable */
+//     MPI_Offset   begin;   /* starting file offset of this block */
+// } NC_blockinfo;
+
+typedef struct NC_block{
+    size_t       name_len; /* strlen(name) for faster string compare */
+    int          modified; /* 1 if the block has been modified */
+    char         *name;    /* name of the variable */
+    MPI_Offset   xsz;      /* size of the block */
+    MPI_Offset   begin;      /* size of the block */
+    NC_dimarray   dims;    /* dimensions defined */
+    NC_vararray   vars;    /* variables defined */
+} NC_block;
+
+//META: NC_blockarray parsed from local header block
+typedef struct NC_blockarray {
+    int           ndefined;    /* number of defined blocks by this process */
+    int           nread;    /* number of blocks read from file */
+    int           *localids;   /* global to local block ids */
+    int           *globalids;   /* local to global block ids */
+    NC_block      **value;     /* blocks defined */
+    int           hash_size;
+    NC_nametable  *nameT;
+} NC_blockarray;
+
+
+/* Begin defined in block.c ---------------------------------------------------*/
+extern void
+ncmpio_free_NC_block(NC_block *ncap);
+
+extern void
+ncmpio_free_NC_blockarray(NC_blockarray *ncap);
 /* Begin defined in var.c ---------------------------------------------------*/
 extern void
 ncmpio_free_NC_var(NC_var *varp);
@@ -357,6 +395,7 @@ typedef struct NC_buf {
     void          *buf;
 } NC_buf;
 
+
 /* chunk size for allocating read/write nonblocking request lists */
 #define NC_REQUEST_CHUNK 1024
 
@@ -396,10 +435,10 @@ struct NC {
     MPI_Offset    ibuf_size;   /* packing buffer size for flushing noncontig
                                   user buffer during wait */
     MPI_Offset    global_xsz;         /* META: size of this global file header */
-    MPI_Offset    local_xsz;         /* META:  size of this global file header */
-    MPI_Offset*   block_begins;    /* META: starting file offset of this variable*/
+    MPI_Offset    xsz;         /* META: size of this global file header */
 
-    MPI_Offset    xsz;         /* size of this file header, <= var[0].begin */
+    // MPI_Offset*   block_begins;    /* META: starting file offset of this variable*/
+
     MPI_Offset    begin_var;   /* file offset of the first fixed-size variable,
                                   if no fixed-sized variable, it is the offset
                                   of first record variable. This value is also
@@ -417,10 +456,14 @@ struct NC {
     MPI_File      collective_fh;  /* file handle for collective mode */
     MPI_File      independent_fh; /* file handle for independent mode */
 
-    NC_dimarray   dims;     /* dimensions defined */
     NC_attrarray  attrs;    /* global attributes defined */
-    NC_vararray   vars;     /* variables defined */
+    NC_blockarray blocks;   /* META: block array */
 
+    NC_dimarray   dims;     /* dimensions defined TODO: need to delete this */
+    NC_vararray   vars;     /* variables defined TODO: need to delete this */
+
+    int           hash_size_var;    //META: hash table size for vars */
+    int           hash_size_dim;    //META: hash table size for dims */
     int           hash_size_attr;  /* hash table size for non-global attributes */
 
     int           maxGetReqID;    /* max get request ID */
@@ -440,6 +483,8 @@ struct NC {
     char         *path;     /* file name */
     struct NC    *old;      /* contains the previous NC during redef. */
 };
+
+
 
 #define NC_readonly(ncp)   fIsSet((ncp)->flags, NC_MODE_RDONLY)
 #define NC_IsNew(ncp)      fIsSet((ncp)->flags, NC_MODE_CREATE)
@@ -493,8 +538,8 @@ ncmpio_hdr_len_NC(const NC *ncp);
 extern MPI_Offset
 ncmpio_global_hdr_len_NC(const NC *ncp);
 /*META*/
-extern MPI_Offset
-ncmpio_local_hdr_len_NC(const NC *ncp);
+// extern MPI_Offset
+// ncmpio_local_hdr_len_NC(const NC *ncp, int block_index);
 
 extern int
 ncmpio_hdr_get_NC(NC *ncp);
@@ -505,7 +550,16 @@ ncmpio_hdr_put_NC(NC *ncp, void *buf);
 
 /*META*/
 extern int
-ncmpio_local_hdr_put_NC(NC *ncp, void *buf);
+hdr_put_NC_name(bufferinfo *pbp, const char *name);
+
+extern int
+hdr_get_NC_modified_blockarray(bufferinfo *pbp, NC_blockarray *ncpb, int src_rank, int *new_block_offsets);
+
+extern int
+hdr_get_NC_name(bufferinfo *gbp, char **namep, size_t *name_len);
+
+extern int
+ncmpio_local_hdr_put_NC(NC *ncp, void *buf, int block_index);
 
 /*META*/
 extern int

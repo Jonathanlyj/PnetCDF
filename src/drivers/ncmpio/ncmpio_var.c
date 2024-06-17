@@ -357,6 +357,7 @@ out :
 /*----< ncmpio_def_var() >---------------------------------------------------*/
 int
 ncmpio_def_var(void       *ncdp,
+               int         blkid,
                const char *name,
                nc_type     xtype,
                int         ndims,
@@ -367,6 +368,11 @@ ncmpio_def_var(void       *ncdp,
     char *nname=NULL; /* normalized name */
     NC *ncp=(NC*)ncdp;
     NC_var *varp=NULL;
+    NC_block *local_block;
+    blkid = ncp->blocks.globalids[blkid];
+    local_block = ncp->blocks.value[blkid];
+    //convert local id to global id
+    varid = local_block->vars.ndefined;
 
     /* create a normalized character string */
     err = ncmpii_utf8_normalize(name, &nname);
@@ -394,12 +400,12 @@ ncmpio_def_var(void       *ncdp,
         goto err_check;
     }
 
-    /* allocate/expand ncp->vars.value array */
-    if (ncp->vars.ndefined % PNC_ARRAY_GROWBY == 0) {
-        size_t alloc_size = (size_t)ncp->vars.ndefined + PNC_ARRAY_GROWBY;
-        ncp->vars.value = (NC_var **) NCI_Realloc(ncp->vars.value,
+    /* allocate/expand local_block->vars.value array */
+    if (local_block->vars.ndefined % PNC_ARRAY_GROWBY == 0) {
+        size_t alloc_size = (size_t)local_block->vars.ndefined + PNC_ARRAY_GROWBY;
+        local_block->vars.value = (NC_var **) NCI_Realloc(local_block->vars.value,
                                       alloc_size * sizeof(NC_var*));
-        if (ncp->vars.value == NULL) {
+        if (local_block->vars.value == NULL) {
             ncmpio_free_NC_var(varp);
             nname = NULL; /* already freed in ncmpio_free_NC_var() */
             err = NC_ENOMEM;
@@ -407,12 +413,12 @@ ncmpio_def_var(void       *ncdp,
         }
     }
 
-    varp->varid = ncp->vars.ndefined; /* varid */
+    varp->varid = local_block->vars.ndefined; /* varid */
 
     /* Add a new handle to the end of an array of handles */
-    ncp->vars.value[ncp->vars.ndefined] = varp;
+    local_block->vars.value[local_block->vars.ndefined] = varp;
 
-    ncp->vars.ndefined++;
+    local_block->vars.ndefined++;
 
 err_check:
     if (ncp->safe_mode) {
@@ -441,11 +447,11 @@ err_check:
     varp->attrs.hash_size = ncp->hash_size_attr;
 
     /* allocate hashing lookup table, if not allocated yet */
-    if (ncp->vars.nameT == NULL)
-        ncp->vars.nameT = NCI_Calloc(ncp->vars.hash_size, sizeof(NC_nametable));
+    if (local_block->vars.nameT == NULL)
+        local_block->vars.nameT = NCI_Calloc(ncp->hash_size_var, sizeof(NC_nametable));
 
     /* insert nname to the lookup table */
-    ncmpio_hash_insert(ncp->vars.nameT, ncp->vars.hash_size, nname, varp->varid);
+    ncmpio_hash_insert(local_block->vars.nameT, ncp->hash_size_var, nname, varp->varid);
 #endif
 
     if (varidp != NULL) *varidp = varp->varid;
@@ -465,17 +471,20 @@ err_check:
 int
 ncmpio_inq_varid(void       *ncdp,
                  const char *name,
+                 int        blkid,
                  int        *varid)
 {
     int err=NC_NOERR;
     char *nname=NULL; /* normalized name */
     NC *ncp=(NC*)ncdp;
+    //convert to global id
+    blkid = ncp->blocks.globalids[blkid];
 
     /* create a normalized character string */
     err = ncmpii_utf8_normalize(name, &nname);
     if (err != NC_NOERR) DEBUG_RETURN_ERROR(err)
 
-    err = NC_findvar(&ncp->vars, nname, varid);
+    err = NC_findvar(&ncp->blocks.value[blkid]->vars, nname, varid);
     NCI_Free(nname);
     if (err != NC_NOERR) DEBUG_RETURN_ERROR(err)
 
@@ -486,6 +495,7 @@ ncmpio_inq_varid(void       *ncdp,
 /* This is an independent subroutine */
 int
 ncmpio_inq_var(void       *ncdp,
+               int         blkid,
                int         varid,
                char       *name,
                nc_type    *xtypep,
@@ -499,6 +509,8 @@ ncmpio_inq_var(void       *ncdp,
     int err=NC_NOERR;
     NC *ncp=(NC*)ncdp;
     NC_var *varp=NULL;
+    //convert to global id
+    if (varid != NC_GLOBAL) blkid = ncp->blocks.globalids[blkid];
 
     /* using NC_GLOBAL in varid is illegal for this API, except for inquiring
      * natts. See
@@ -514,7 +526,7 @@ ncmpio_inq_var(void       *ncdp,
         return NC_NOERR;
     }
 
-    varp = ncp->vars.value[varid];
+    varp = ncp->blocks.value[blkid]->vars.value[varid];
 
     if (name != NULL)
         /* in PnetCDF, name is always NULL character terminated */
@@ -564,6 +576,7 @@ ncmpio_inq_var(void       *ncdp,
  */
 int
 ncmpio_rename_var(void       *ncdp,
+                  int         blkid,
                   int         varid,
                   const char *newname)
 {
@@ -573,9 +586,11 @@ ncmpio_rename_var(void       *ncdp,
     NC *ncp=(NC*)ncdp;
     NC_var *varp=NULL;
 
+    //convert to global id
+    blkid = ncp->blocks.globalids[blkid];
     /* check whether variable ID is valid */
     /* sanity check for ncdp and varid has been done in dispatchers */
-    varp = ncp->vars.value[varid];
+    varp = ncp->blocks.value[blkid]->vars.value[varid];
 
     /* create a normalized character string */
     err = ncmpii_utf8_normalize(newname, &nnewname);
@@ -591,7 +606,7 @@ ncmpio_rename_var(void       *ncdp,
 
 #ifndef SEARCH_NAME_LINEARLY
     /* update var name lookup table */
-    err = ncmpio_update_name_lookup_table(ncp->vars.nameT, ncp->vars.hash_size,
+    err = ncmpio_update_name_lookup_table(ncp->vars.nameT, ncp->hash_size_var,
                         varid, ncp->vars.value[varid]->name, nnewname);
     if (err != NC_NOERR) {
         DEBUG_TRACE_ERROR(err)

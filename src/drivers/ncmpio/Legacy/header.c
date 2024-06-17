@@ -45,6 +45,8 @@ static const char ncmagic5[] = {'C', 'D', 'F', 0x05};
  * Sets ncp->begin_rec to start of first record variable.
  * Returns -1 on error. The only possible error is an reference to a non
  * existent dimension, which would occur for a corrupt netcdf file.
+ * 
+ * META:ncp->begin_var and ncp->begin_rec is not calculated here
  */
 static int
 compute_var_shape(NC *ncp)

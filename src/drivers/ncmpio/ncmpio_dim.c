@@ -186,18 +186,21 @@ ncmpio_dup_NC_dimarray(NC_dimarray *ncap, const NC_dimarray *ref)
 #ifndef SEARCH_NAME_LINEARLY
     /* allocate hashing lookup table, if not allocated yet */
     if (ncap->nameT == NULL)
-        ncap->nameT = NCI_Calloc(ncap->hash_size, sizeof(NC_nametable));
+        ncap->nameT = NCI_Calloc(hash_size_dim, sizeof(NC_nametable));
 
     /* duplicate dim name lookup table */
-    ncmpio_hash_table_copy(ncap->nameT, ref->nameT, ncap->hash_size);
+    ncmpio_hash_table_copy(ncap->nameT, ref->nameT, hash_size_dim);
 #endif
 
     return NC_NOERR;
 }
 
+
+
 /*----< ncmpio_def_dim() >---------------------------------------------------*/
 int
 ncmpio_def_dim(void       *ncdp,    /* IN:  NC object */
+               int         blkid,   /* IN:  block ID */
                const char *name,    /* IN:  name of dimension */
                MPI_Offset  size,    /* IN:  dimension size */
                int        *dimidp)  /* OUT: dimension ID */
@@ -206,6 +209,9 @@ ncmpio_def_dim(void       *ncdp,    /* IN:  NC object */
     char *nname=NULL;  /* normalized name */
     NC *ncp=(NC*)ncdp;
     NC_dim *dimp=NULL;
+
+    //convert local id to global id
+    blkid = ncp->blocks.globalids[blkid];
 
     /* create a normalized character string */
     err = ncmpii_utf8_normalize(name, &nname);
@@ -221,35 +227,35 @@ ncmpio_def_dim(void       *ncdp,    /* IN:  NC object */
     dimp->name     = nname;
     dimp->name_len = strlen(nname);
 
-    /* allocate/expand ncp->dims.value array */
-    if (ncp->dims.ndefined % PNC_ARRAY_GROWBY == 0) {
-        size_t alloc_size = (size_t)ncp->dims.ndefined + PNC_ARRAY_GROWBY;
+    /* allocate/expand ncp->blocks.value[blkid]->dims.value array */
+    if (ncp->blocks.value[blkid]->dims.ndefined % PNC_ARRAY_GROWBY == 0) {
+        size_t alloc_size = (size_t)ncp->blocks.value[blkid]->dims.ndefined + PNC_ARRAY_GROWBY;
 
-        ncp->dims.value = (NC_dim **) NCI_Realloc(ncp->dims.value,
+        ncp->blocks.value[blkid]->dims.value = (NC_dim **) NCI_Realloc(ncp->blocks.value[blkid]->dims.value,
                                       alloc_size * sizeof(NC_dim*));
-        if (ncp->dims.value == NULL) {
+        if (ncp->blocks.value[blkid]->dims.value == NULL) {
             NCI_Free(nname);
             NCI_Free(dimp);
             DEBUG_RETURN_ERROR(NC_ENOMEM)
         }
     }
 
-    dimid = ncp->dims.ndefined;
+    dimid = ncp->blocks.value[blkid]->dims.ndefined;
 
     /* Add a new dim handle to the end of handle array */
-    ncp->dims.value[dimid] = dimp;
+    ncp->blocks.value[blkid]->dims.value[dimid] = dimp;
 
-    if (size == NC_UNLIMITED) ncp->dims.unlimited_id = dimid;
+    if (size == NC_UNLIMITED) ncp->blocks.value[blkid]->dims.unlimited_id = dimid;
 
-    ncp->dims.ndefined++;
+    ncp->blocks.value[blkid]->dims.ndefined++;
 
 #ifndef SEARCH_NAME_LINEARLY
     /* allocate hashing lookup table, if not allocated yet */
-    if (ncp->dims.nameT == NULL)
-        ncp->dims.nameT = NCI_Calloc(ncp->dims.hash_size, sizeof(NC_nametable));
+    if (ncp->blocks.value[blkid]->dims.nameT == NULL)
+        ncp->blocks.value[blkid]->dims.nameT = NCI_Calloc(ncp->hash_size_dim, sizeof(NC_nametable));
 
     /* insert nname to the lookup table */
-    ncmpio_hash_insert(ncp->dims.nameT, ncp->dims.hash_size, nname, dimid);
+    ncmpio_hash_insert(ncp->blocks.value[blkid]->dims.nameT, ncp->hash_size_dim, nname, dimid);
 #endif
 
     if (dimidp != NULL) *dimidp = dimid;
@@ -260,18 +266,21 @@ ncmpio_def_dim(void       *ncdp,    /* IN:  NC object */
 /*----< ncmpio_inq_dimid() >-------------------------------------------------*/
 int
 ncmpio_inq_dimid(void       *ncdp,
+                 int       blkid,
                  const char *name,
                  int        *dimid)
 {
     int err=NC_NOERR;
     char *nname=NULL; /* normalized name */
     NC *ncp=(NC*)ncdp;
+    //convert local id to global id
+    blkid = ncp->blocks.globalids[blkid];
 
     /* create a normalized character string */
     err = ncmpii_utf8_normalize(name, &nname);
     if (err != NC_NOERR) return err;
 
-    err = NC_finddim(&ncp->dims, nname, dimid);
+    err = NC_finddim(&ncp->blocks.value[blkid]->dims, ncp->hash_size_dim, nname, dimid);
     NCI_Free(nname);
 
     return err;
@@ -280,6 +289,7 @@ ncmpio_inq_dimid(void       *ncdp,
 /*----< ncmpio_inq_dim() >---------------------------------------------------*/
 int
 ncmpio_inq_dim(void       *ncdp,
+               int         blkid,
                int         dimid,
                char       *name,
                MPI_Offset *sizep)
@@ -287,8 +297,11 @@ ncmpio_inq_dim(void       *ncdp,
     NC_dim *dimp;
     NC *ncp=(NC*)ncdp;
 
+    //convert local id to global id
+    blkid = ncp->blocks.globalids[blkid];
+
     /* sanity check for dimid has been done at dispatchers */
-    dimp = ncp->dims.value[dimid];
+    dimp = ncp->blocks.value[blkid]->dims.value[dimid];
 
     if (name != NULL)
         /* in PnetCDF, name is always NULL character terminated */
@@ -310,6 +323,7 @@ ncmpio_inq_dim(void       *ncdp,
  */
 int
 ncmpio_rename_dim(void       *ncdp,
+                  int         blkid,
                   int         dimid,
                   const char *newname)
 {
@@ -319,6 +333,8 @@ ncmpio_rename_dim(void       *ncdp,
     NC *ncp=(NC*)ncdp;
     NC_dim *dimp=NULL;
 
+    //convert local id to global id
+    blkid = ncp->blocks.globalids[blkid];
     /* create a normalized character string */
     err = ncmpii_utf8_normalize(newname, &nnewname);
     if (err != NC_NOERR) goto err_check;
@@ -326,7 +342,7 @@ ncmpio_rename_dim(void       *ncdp,
     nnewname_len = strlen(nnewname);
 
     /* sanity check for dimid has been done at dispatchers */
-    dimp = ncp->dims.value[dimid];
+    dimp = ncp->blocks.value[blkid]->dims.value[dimid];
 
     if (! NC_indef(ncp) && dimp->name_len < nnewname_len) {
         /* when in data mode, newname cannot be longer than the old one */
@@ -337,8 +353,8 @@ ncmpio_rename_dim(void       *ncdp,
 #ifndef SEARCH_NAME_LINEARLY
     /* update dim name lookup table, by removing the old name and add
      * the new name */
-    err = ncmpio_update_name_lookup_table(ncp->dims.nameT, ncp->dims.hash_size,
-                             dimid, ncp->dims.value[dimid]->name, nnewname);
+    err = ncmpio_update_name_lookup_table(ncp->blocks.value[blkid]->dims.nameT, ncp->hash_size_dim,
+                             dimid, ncp->blocks.value[blkid]->dims.value[dimid]->name, nnewname);
     if (err != NC_NOERR) {
         DEBUG_TRACE_ERROR(err)
         goto err_check;
@@ -384,3 +400,4 @@ err_check:
 
     return err;
 }
+

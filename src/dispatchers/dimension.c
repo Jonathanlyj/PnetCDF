@@ -21,6 +21,7 @@
 /* This is a collective subroutine. */
 int
 ncmpi_def_dim(int         ncid,    /* IN:  file ID */
+              int         blkid,    /* IN:  block ID */
               const char *name,    /* IN:  name of dimension */
               MPI_Offset  size,    /* IN:  dimension size */
               int        *dimidp)  /* OUT: dimension ID */
@@ -93,7 +94,7 @@ ncmpi_def_dim(int         ncid,    /* IN:  file ID */
     }
 
     /* check if the name string is previously used */
-    err = pncp->driver->inq_dimid(pncp->ncp, name, NULL);
+    err = pncp->driver->inq_dimid(pncp->ncp, blkid, name, NULL);
     if (err != NC_EBADDIM) {
         DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
         goto err_check;
@@ -152,7 +153,7 @@ err_check:
     if (err != NC_NOERR) return err;
 
     /* calling the subroutine that implements ncmpi_def_dim() */
-    err = pncp->driver->def_dim(pncp->ncp, name, size, &dimid);
+    err = pncp->driver->def_dim(pncp->ncp, blkid, name, size, &dimid);
     if (err != NC_NOERR) return err;
 
     if (size == NC_UNLIMITED && pncp->unlimdimid == -1)
@@ -169,6 +170,7 @@ err_check:
 /* This is an independent subroutine. */
 int
 ncmpi_inq_dimid(int         ncid,    /* IN:  file ID */
+                int         blkid,    /* IN:  block ID */
                 const char *name,    /* IN:  name of dimension */
                 int        *dimidp)  /* OUT: dimension ID */
 {
@@ -184,13 +186,14 @@ ncmpi_inq_dimid(int         ncid,    /* IN:  file ID */
     if (strlen(name) > NC_MAX_NAME) DEBUG_RETURN_ERROR(NC_EMAXNAME)
 
     /* calling the subroutine that implements ncmpi_inq_dimid() */
-    return pncp->driver->inq_dimid(pncp->ncp, name, dimidp);
+    return pncp->driver->inq_dimid(pncp->ncp, blkid, name, dimidp);
 }
 
 /*----< ncmpi_inq_dim() >----------------------------------------------------*/
 /* This is an independent subroutine. */
 int
 ncmpi_inq_dim(int         ncid,    /* IN:  file ID */
+              int         blkid,    /* IN:  block ID */
               int         dimid,   /* IN:  dimension ID */
               char       *name,    /* OUT: name of dimension */
               MPI_Offset *lengthp) /* OUT: length of dimension */
@@ -205,33 +208,36 @@ ncmpi_inq_dim(int         ncid,    /* IN:  file ID */
     if (dimid < 0 || dimid >= pncp->ndims) DEBUG_RETURN_ERROR(NC_EBADDIM)
 
     /* calling the subroutine that implements ncmpi_inq_dim() */
-    return pncp->driver->inq_dim(pncp->ncp, dimid, name, lengthp);
+    return pncp->driver->inq_dim(pncp->ncp, blkid, dimid, name, lengthp);
 }
 
 /*----< ncmpi_inq_dimname() >------------------------------------------------*/
 /* This is an independent subroutine. */
 int
 ncmpi_inq_dimname(int   ncid,    /* IN:  file ID */
+                  int   blkid,   /* IN:  block ID */
                   int   dimid,   /* IN:  dimension ID */
                   char *name)    /* OUT: name of dimension */
 {
-    return ncmpi_inq_dim(ncid, dimid, name, NULL);
+    return ncmpi_inq_dim(ncid, blkid, dimid, name, NULL);
 }
 
 /*----< ncmpi_inq_dimlen() >-------------------------------------------------*/
 /* This is an independent subroutine. */
 int
 ncmpi_inq_dimlen(int         ncid,
+                int         blkid,   /* IN:  block ID */
                  int         dimid,
                  MPI_Offset *lenp)
 {
-    return ncmpi_inq_dim(ncid, dimid, NULL, lenp);
+    return ncmpi_inq_dim(ncid, blkid, dimid, NULL, lenp);
 }
 
 /*----< ncmpi_rename_dim() >-------------------------------------------------*/
 /* This is a collective subroutine. */
 int
 ncmpi_rename_dim(int         ncid,    /* IN: file ID */
+                 int         blkid,   /* IN: block ID */
                  int         dimid,   /* IN: dimension ID */
                  const char *newname) /* IN: name of dimension */
 {
@@ -271,7 +277,7 @@ ncmpi_rename_dim(int         ncid,    /* IN: file ID */
     }
 
     /* check if the name string is previously used */
-    err = pncp->driver->inq_dimid(pncp->ncp, newname, &inq_id);
+    err = pncp->driver->inq_dimid(pncp->ncp, blkid, newname, &inq_id);
     if (err == NC_NOERR) { /* name already exist */
         if (inq_id == dimid) /* same name, same dimid, skip rename */
             skip_rename = 1;
@@ -333,6 +339,6 @@ err_check:
     if (skip_rename) return NC_NOERR;
 
     /* calling the subroutine that implements ncmpi_rename_dim() */
-    return pncp->driver->rename_dim(pncp->ncp, dimid, newname);
+    return pncp->driver->rename_dim(pncp->ncp, blkid, dimid, newname);
 }
 

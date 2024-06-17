@@ -506,7 +506,7 @@ hdr_get_nc_type(bufferinfo *gbp, nc_type *xtypep)
 }
 
 /*----< hdr_get_NC_name() >--------------------------------------------------*/
-static int
+int
 hdr_get_NC_name(bufferinfo *gbp, char **namep, size_t *name_len)
 {
     /* netCDF file format:
@@ -1305,10 +1305,32 @@ ncmpio_hdr_len_NC(const NC *ncp)
 
     return xlen; /* return the header size (not yet aligned) */
 }
+
 /*META*/
 /*----< hdr_len_NC_block_offset_array() >------------------------------------------------*/
 MPI_Offset
-hdr_len_NC_block_offset_array(const int nblocks, int sizeof_NON_NEG){
+hdr_len_NC_blockinfo(const NC_block *blockp, int sizeof_NON_NEG, int sizeof_off_t){
+
+    /* netCDF file format:
+     * netcdf_file = header  data
+     * header = global_header  local_header
+     * global_header     = magic  numrecs  gatt_list blockinfo_list
+     * blockinfo_list = ABSENT | NC_BLOCK nelems [blockinfo ...] //block offsets
+     * blockinfo = name OFFSET bsize
+     * numrecs     = NON_NEG | STREAMING   // length of record dimension
+     * NON_NEG     = <non-negative INT> |  // CDF-1 and CDF-2
+     *               <non-negative INT64>  // CDF-5
+     */
+    MPI_Offset xlen;
+    xlen = sizeof_NON_NEG + _RNDUP(blockp->name_len, X_ALIGN); //name
+    xlen += sizeof_off_t; // OFFSET
+    xlen += sizeof_NON_NEG; // bsize
+    return xlen;
+}
+/*META*/
+/*----< hdr_len_NC_block_offset_array() >------------------------------------------------*/
+MPI_Offset
+hdr_len_NC_blockinfo_array(const NC_blockarray *blockarray, int sizeof_NON_NEG, int sizeof_off_t){
 
     /* netCDF file format:
      * netcdf_file = header  data
@@ -1323,9 +1345,16 @@ hdr_len_NC_block_offset_array(const int nblocks, int sizeof_NON_NEG){
     MPI_Offset xlen;
     xlen = X_SIZEOF_NC_TAG;           /* NC_BLOCKOFFSET */
     xlen += sizeof_NON_NEG;           /* nelems */
-    xlen += sizeof_NON_NEG * nblocks;   /* [OFFSET ...] */
+    
+    for(int i=0; i<blockarray->ndefined; i++){
+        xlen += hdr_len_NC_blockinfo(blockarray->value[i], sizeof_NON_NEG, sizeof_off_t);   /* block_info */
+    }   /* [block_info ...] */
     return xlen;
 }
+
+
+
+
 /*META*/
 /*----< ncmpio_global_hdr_len_NC() >------------------------------------------------*/
 MPI_Offset
@@ -1364,50 +1393,50 @@ ncmpio_global_hdr_len_NC(const NC *ncp)
     xlen += sizeof_NON_NEG;                                                  /* numrecs */
     xlen += hdr_len_NC_attrarray(&ncp->attrs, sizeof_NON_NEG);               /* gatt_list */
     printf("\nxlen = %lld\n", xlen);
-    xlen += hdr_len_NC_block_offset_array(ncp->nblocks, sizeof_NON_NEG);    /* block_begins */
+    xlen += hdr_len_NC_blockinfo_array(&ncp->blocks, sizeof_NON_NEG, sizeof_off_t);    /* block_begins */
     printf("\nxlen = %lld\n", xlen);
     return xlen; /* return the header size (not yet aligned) */
-}
+} 
 
 
-/*META*/
-/*----< ncmpio_local_hdr_len_NC() >------------------------------------------------*/
-MPI_Offset
-ncmpio_local_hdr_len_NC(const NC *ncp)
-{
-    /* netCDF file format:
-     * netcdf_file = header  data
-     * header = global_header  local_header
-     * local_header  = [header_block ...]
-     * header_block = dim_list var_list
-     *  ...
-     * numrecs     = NON_NEG | STREAMING   // length of record dimension
-     * NON_NEG     = <non-negative INT> |  // CDF-1 and CDF-2
-     *               <non-negative INT64>  // CDF-5
-     */
+// /*META*/
+// /*----< ncmpio_local_hdr_len_NC() >------------------------------------------------*/
+// MPI_Offset
+// ncmpio_local_hdr_len_NC(NC *ncp, int block_index)
+// {
+//     /* netCDF file format:
+//      * netcdf_file = header  data
+//      * header = global_header  local_header
+//      * local_header  = [header_block ...]
+//      * header_block = dim_list var_list
+//      *  ...
+//      * numrecs     = NON_NEG | STREAMING   // length of record dimension
+//      * NON_NEG     = <non-negative INT> |  // CDF-1 and CDF-2
+//      *               <non-negative INT64>  // CDF-5
+//      */
 
-    int sizeof_NON_NEG, sizeof_off_t;
-    MPI_Offset xlen;
+//     int sizeof_NON_NEG, sizeof_off_t;
+//     MPI_Offset xlen;
 
-    assert(ncp != NULL);
+//     assert(ncp != NULL);
 
-    if (ncp->format == 5) {        /* CDF-5 */
-        sizeof_NON_NEG = X_SIZEOF_INT64; /* 8-byte integer for all integers */
-        sizeof_off_t   = X_SIZEOF_INT64; /* 8-byte integer for var begin */
-    }
-    else if (ncp->format == 2) { /* CDF-2 */
-        sizeof_NON_NEG = X_SIZEOF_INT; /* 4-byte integer in CDF-1 */
-        sizeof_off_t   = X_SIZEOF_INT64; /* 8-byte integer for var begin */
-    }
-    else { /* CDF-1 */
-        sizeof_NON_NEG = X_SIZEOF_INT; /* 4-byte integer in CDF-1 */
-        sizeof_off_t   = X_SIZEOF_INT; /* 4-byte integer in CDF-1 */
-    }
+//     if (ncp->format == 5) {        /* CDF-5 */
+//         sizeof_NON_NEG = X_SIZEOF_INT64; /* 8-byte integer for all integers */
+//         sizeof_off_t   = X_SIZEOF_INT64; /* 8-byte integer for var begin */
+//     }
+//     else if (ncp->format == 2) { /* CDF-2 */
+//         sizeof_NON_NEG = X_SIZEOF_INT; /* 4-byte integer in CDF-1 */
+//         sizeof_off_t   = X_SIZEOF_INT64; /* 8-byte integer for var begin */
+//     }
+//     else { /* CDF-1 */
+//         sizeof_NON_NEG = X_SIZEOF_INT; /* 4-byte integer in CDF-1 */
+//         sizeof_off_t   = X_SIZEOF_INT; /* 4-byte integer in CDF-1 */
+//     }
 
-    xlen += hdr_len_NC_dimarray(&ncp->dims,   sizeof_NON_NEG);               /* dim_list */
-    xlen += hdr_len_NC_vararray(&ncp->vars,   sizeof_NON_NEG, sizeof_off_t); /* var_list */
-    return xlen; /* return the header size (not yet aligned) */
-}
+//     xlen += hdr_len_NC_dimarray(&ncp->blocks->valuep[block_index]->dims,   sizeof_NON_NEG);               /* dim_list */
+//     xlen += hdr_len_NC_vararray(&ncp->blocks->valuep[block_index]->vars,   sizeof_NON_NEG, sizeof_off_t); /* var_list */
+//     return xlen; /* return the header size (not yet aligned) */
+// }
 
 /*----< ncmpio_hdr_get_NC() >------------------------------------------------*/
 /*  CDF format specification
@@ -1545,4 +1574,5 @@ fn_exit:
 
     return (err == NC_NOERR) ? status : err;
 }
+
 

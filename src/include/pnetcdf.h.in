@@ -774,27 +774,27 @@ extern int
 ncmpi_set_fill(int ncid, int fillmode, int *old_modep);
 
 extern int
-ncmpi_def_var_fill(int ncid, int varid, int no_fill, const void *fill_value);
+ncmpi_def_var_fill(int ncid, int blkid, int varid, int no_fill, const void *fill_value);
 
 extern int
-ncmpi_fill_var_rec(int ncid, int varid, MPI_Offset recno);
+ncmpi_fill_var_rec(int ncid, int blkid, int varid, MPI_Offset recno);
 
 /* End File Functions */
 
 /* Begin Define Mode Functions */
 
 extern int
-ncmpi_def_dim(int ncid, const char *name, MPI_Offset len, int *idp);
+ncmpi_def_dim(int ncid, int blkid, const char *name, MPI_Offset len, int *idp);
 
 extern int
-ncmpi_def_var(int ncid, const char *name, nc_type xtype, int ndims,
+ncmpi_def_var(int ncid, int blkid, const char *name, nc_type xtype, int ndims,
               const int *dimidsp, int *varidp);
 
 extern int
-ncmpi_rename_dim(int ncid, int dimid, const char *name);
+ncmpi_rename_dim(int ncid, int blkid, int dimid, const char *name);
 
 extern int
-ncmpi_rename_var(int ncid, int varid, const char *name);
+ncmpi_rename_var(int ncid, int blkid, int varid, const char *name);
 
 /* End Define Mode Functions */
 
@@ -836,23 +836,23 @@ extern int
 ncmpi_inq_unlimdim(int ncid, int *unlimdimidp);
 
 extern int
-ncmpi_inq_dimid(int ncid, const char *name, int *idp);
+ncmpi_inq_dimid(int ncid, int blkid, const char *name, int *idp);
 
 extern int
-ncmpi_inq_dim(int ncid, int dimid, char *name, MPI_Offset *lenp);
+ncmpi_inq_dim(int ncid, int blkid, int dimid, char *name, MPI_Offset *lenp);
 
 extern int
-ncmpi_inq_dimname(int ncid, int dimid, char *name);
+ncmpi_inq_dimname(int ncid, int blkid, int dimid, char *name);
 
 extern int
-ncmpi_inq_dimlen(int ncid, int dimid, MPI_Offset *lenp);
+ncmpi_inq_dimlen(int ncid, int blkid, int dimid, MPI_Offset *lenp);
 
 extern int
-ncmpi_inq_var(int ncid, int varid, char *name, nc_type *xtypep, int *ndimsp,
+ncmpi_inq_var(int ncid, int blkid, int varid, char *name, nc_type *xtypep, int *ndimsp,
               int *dimidsp, int *nattsp);
 
 extern int
-ncmpi_inq_varid(int ncid, const char *name, int *varidp);
+ncmpi_inq_varid(int ncid, int blkid, const char *name, int *varidp);
 
 extern int
 ncmpi_inq_varname(int ncid, int varid, char *name);
