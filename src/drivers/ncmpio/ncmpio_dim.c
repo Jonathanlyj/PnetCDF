@@ -86,7 +86,8 @@ NC_finddim(const NC_dimarray *ncap,
 static int
 NC_finddim(const NC_dimarray *ncap,
            const char        *name,  /* normalized dim name */
-           int               *dimidp)
+           int               *dimidp,
+           int               hash_size)
 {
     int i, key, dimid;
     size_t nchars;
@@ -95,7 +96,7 @@ NC_finddim(const NC_dimarray *ncap,
         DEBUG_RETURN_ERROR(NC_EBADDIM)
 
     /* hash the dim name into a key for name lookup */
-    key = HASH_FUNC(name, ncap->hash_size);
+    key = HASH_FUNC(name, hash_size);
 
     /* check the list using linear search */
     nchars = strlen(name);
@@ -151,7 +152,7 @@ ncmpio_free_NC_dimarray(NC_dimarray *ncap)
 
 /*----< ncmpio_dup_NC_dimarray() >-------------------------------------------*/
 int
-ncmpio_dup_NC_dimarray(NC_dimarray *ncap, const NC_dimarray *ref)
+ncmpio_dup_NC_dimarray(NC_dimarray *ncap, const NC_dimarray *ref, int hash_size_dim)
 {
     int i, status=NC_NOERR;
 
@@ -280,7 +281,7 @@ ncmpio_inq_dimid(void       *ncdp,
     err = ncmpii_utf8_normalize(name, &nname);
     if (err != NC_NOERR) return err;
 
-    err = NC_finddim(&ncp->blocks.value[blkid]->dims, ncp->hash_size_dim, nname, dimid);
+    err = NC_finddim(&ncp->blocks.value[blkid]->dims, nname, dimid, ncp->hash_size_dim);
     NCI_Free(nname);
 
     return err;

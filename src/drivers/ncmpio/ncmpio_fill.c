@@ -709,7 +709,7 @@ ncmpio_fill_var_rec(void      *ncdp,
     NC     *ncp=(NC*)ncdp;
     NC_var *varp=NULL;
     //convert local blkid to global blkid
-    blkid = ncp->blocks.globalids[blkid]
+    blkid = ncp->blocks.globalids[blkid];
     /* check whether variable ID is valid */
     /* sanity check for ncdp and varid has been done in dispatchers */
     varp = ncp->blocks.value[blkid]->vars.value[varid];
@@ -836,7 +836,7 @@ ncmpio_def_var_fill(void       *ncdp,
     //conert to global blkid
     blkid = ncp->blocks.globalids[blkid];
     /* sanity check for ncdp and varid has been done in dispatchers */
-    varp = ncp->blocks[blkid]->vars.value[varid];
+    varp = ncp->blocks.value[blkid]->vars.value[varid];
 
     if (ncp->safe_mode) {
         int root_ids[3], my_fill_null, minE, mpireturn;

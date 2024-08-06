@@ -9,8 +9,9 @@
 # adding . to the list of SUBDIRS causes the directories built before .
 # This is useful for "make -j" option, as libs should be built after all
 # sub-libraries
-SUBDIRS = include dispatchers drivers binding packaging . libs utils
-DIST_SUBDIRS = include dispatchers drivers binding packaging libs utils
+# META: skip compile utils for now
+SUBDIRS = include dispatchers drivers binding packaging . libs 
+DIST_SUBDIRS = include dispatchers drivers binding packaging libs
 
 # For VPATH build (parallel build), try delete all sub-directories
 distclean-local:

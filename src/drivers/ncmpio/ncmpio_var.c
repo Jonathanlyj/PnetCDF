@@ -369,10 +369,10 @@ ncmpio_def_var(void       *ncdp,
     NC *ncp=(NC*)ncdp;
     NC_var *varp=NULL;
     NC_block *local_block;
+    //convert local id to global id
     blkid = ncp->blocks.globalids[blkid];
     local_block = ncp->blocks.value[blkid];
-    //convert local id to global id
-    varid = local_block->vars.ndefined;
+    
 
     /* create a normalized character string */
     err = ncmpii_utf8_normalize(name, &nname);

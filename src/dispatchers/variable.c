@@ -367,6 +367,7 @@ ncmpi_inq_varname(int   ncid,    /* IN:  file ID */
     if (varid < 0 || varid >= pncp->nvars) DEBUG_RETURN_ERROR(NC_ENOTVAR)
 
     /* calling the subroutine that implements ncmpi_inq_varname() */
+    //META: TODO: fix blkid here by adding blkid input argument to the function 
     return pncp->driver->inq_var(pncp->ncp, NULL, varid, name, NULL, NULL,
                                  NULL, NULL, NULL, NULL, NULL);
 }
@@ -651,7 +652,7 @@ ncmpi_rename_var(int         ncid,    /* IN: file ID */
 
     /* check whether new name is already in use, for this API (rename) the
      * name should NOT already exist */
-    err = pncp->driver->inq_varid(pncp->ncp, blkid, newname, NULL);
+    err = pncp->driver->inq_varid(pncp->ncp, newname, blkid, NULL);
     if (err != NC_ENOTVAR) { /* expecting NC_ENOTVAR */
         DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
         goto err_check;
