@@ -168,6 +168,9 @@ put_varm(NC               *ncp,
     need_convert = ncmpii_need_convert(ncp->format, varp->xtype, itype);
     need_swap    = NEED_BYTE_SWAP(varp->xtype, itype);
 
+if (need_convert) printf("Error at %s line %d: this version of PnetCDF does not support data type conversion !!!\n",__func__,__LINE__);
+/* force disable byte swap */ need_swap = 0;
+
     in_place_swap = 0;
     if (need_swap) {
         if (fIsSet(ncp->flags, NC_MODE_SWAP_ON))
