@@ -23,7 +23,7 @@
 #include <assert.h>
 
 #include <mpi.h>
-
+#include <pnetcdf.h>
 #include <pnc_debug.h>
 #include <common.h>
 #include "ncmpio_NC.h"
@@ -69,7 +69,7 @@ ncmpio_def_block(void       *ncdp,    /* IN:  NC object */
                                       alloc_size * sizeof(int));
         if (ncp->blocks.value == NULL) {
             NCI_Free(nname);
-            NCI_Free(blkp);
+            NCI_Free(blockp);
             DEBUG_RETURN_ERROR(NC_ENOMEM)
         }
     }
@@ -79,6 +79,13 @@ ncmpio_def_block(void       *ncdp,    /* IN:  NC object */
     ncp->blocks.globalids[blkid] = ncp->blocks.localids[blkid] = blkid;
     ncp->blocks.value[blkid] = blockp;
     ncp->blocks.ndefined++;
+    /*init dim and var arrays*/
+    ncp->blocks.value[blkid]->dims.ndefined = 0;
+    ncp->blocks.value[blkid]->dims.value = NULL;
+    ncp->blocks.value[blkid]->dims.nameT = NULL;
+    ncp->blocks.value[blkid]->vars.ndefined = 0;
+    ncp->blocks.value[blkid]->vars.value = NULL;
+    ncp->blocks.value[blkid]->vars.nameT = NULL;
 
 #ifndef SEARCH_NAME_LINEARLY
     /* allocate hashing lookup table, if not allocated yet */
@@ -100,7 +107,7 @@ ncmpio_def_block(void       *ncdp,    /* IN:  NC object */
  * If found, set the blk ID pointed by blkidp, otherwise return NC_EBADBLK
  */
 static int
-NC_findblk(const NC_blkarray *ncap,
+NC_findblk(const NC_blockarray *ncap,
            const char        *name,  /* normalized blk name */
            int               *blkidp)
 {
@@ -148,12 +155,15 @@ ncmpio_inq_blkid(void       *ncdp,
 /*----< ncmpio_free_NC_block() >-----------------------------------------*/
 /* Free NC_block values. */
 void
-ncmpio_free_NC_block(NC_block *ncap, int hash_size_dim, int hash_size_var)
+ncmpio_free_NC_block(NC_block *ncap)
 {
     if (ncap == NULL) return;
+    
     NCI_Free(ncap->name);
-    ncmpio_free_NC_dimarray(&ncap->dims, hash_size_dim);
-    ncmpio_free_NC_vararray(&ncap->vars, hash_size_var);
+    
+
+    ncmpio_free_NC_dimarray(&ncap->dims);
+    ncmpio_free_NC_vararray(&ncap->vars);
 
 }
 
@@ -170,8 +180,10 @@ ncmpio_free_NC_blockarray(NC_blockarray *ncap)
         /* when error is detected reading NC_ATTRIBUTE tag, ncap->ndefined can
          * be > 0 and ncap->value is still NULL
          */
+
         for (i=0; i<ncap->ndefined; i++) {
             if (ncap->value[i] == NULL) continue;
+            
             ncmpio_free_NC_block(ncap->value[i]);
             NCI_Free(ncap->value[i]);
         }

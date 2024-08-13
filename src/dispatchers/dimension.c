@@ -155,7 +155,7 @@ err_check:
     /* calling the subroutine that implements ncmpi_def_dim() */
     err = pncp->driver->def_dim(pncp->ncp, blkid, name, size, &dimid);
     if (err != NC_NOERR) return err;
-
+   
     if (size == NC_UNLIMITED && pncp->unlimdimid == -1)
         pncp->unlimdimid = dimid;
 

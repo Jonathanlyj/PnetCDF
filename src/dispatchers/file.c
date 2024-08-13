@@ -17,7 +17,6 @@
 #include <unistd.h>     /* read(), close(), lseek() */
 #include <assert.h>     /* assert() */
 #include <errno.h>      /* errno */
-
 #ifdef ENABLE_THREAD_SAFE
 #include<pthread.h>
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
@@ -31,6 +30,7 @@ static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 #include <dispatch.h>
 #include <pnc_debug.h>
 #include <common.h>
+
 
 #ifdef ENABLE_ADIOS
 #include "adios_read.h"
@@ -931,7 +931,6 @@ ncmpi_enddef(int ncid) {
     else if (err != NC_NOERR) return err; /* fatal error */
 
     /* calling the subroutine that implements ncmpi_enddef() */
-
     err = pncp->driver->enddef(pncp->ncp);
     if (err != NC_NOERR) return err;
 

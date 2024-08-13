@@ -65,6 +65,7 @@ ncmpio_free_NC(NC *ncp)
 
     // ncmpio_free_NC_dimarray(&ncp->dims);
     ncmpio_free_NC_attrarray(&ncp->attrs);
+    
     ncmpio_free_NC_blockarray(&ncp->blocks);
     // ncmpio_free_NC_vararray(&ncp->vars);
 
@@ -121,7 +122,7 @@ ncmpio_close(void *ncdp)
 {
     int err=NC_NOERR, status=NC_NOERR;
     NC *ncp = (NC*)ncdp;
-
+    
     if (NC_indef(ncp)) { /* currently in define mode */
         status = ncmpio__enddef(ncp, 0, 0, 0, 0); /* TODO: defaults */
 
@@ -243,6 +244,7 @@ ncmpio_close(void *ncdp)
     }
 
     /* free up space occupied by the header metadata */
+    
     ncmpio_free_NC(ncp);
 
     return status;

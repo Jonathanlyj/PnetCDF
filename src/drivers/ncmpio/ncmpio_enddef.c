@@ -244,7 +244,7 @@ move_record_vars(NC *ncp, NC *old) {
 /*--------------< hdr_put_NC_modified_blockarray() >----------------------------------------------*/
 //META: this is just for MPI comm at enddef
 static int
-hdr_put_NC_modified_blockarray(const NC_blockarray *ncpb, bufferinfo *pbp){
+hdr_put_NC_modified_blockarray(const NC_blockarray *ncpb, bufferinfo *pbp) {
     /* netCDF file format:
      *  ...
      * block_offset list     = ABSENT | NC_BLOCK nelems [block_info ...]
@@ -295,6 +295,7 @@ hdr_put_NC_modified_blockarray(const NC_blockarray *ncpb, bufferinfo *pbp){
             status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)i);
             if (status != NC_NOERR) return status;
             //copy block name
+            printf("\npbp->pos - pbp->base: %ld\n", pbp->pos - pbp->base);
             status = hdr_put_NC_name(pbp, ncpb->value[i]->name);
             //copy block size
             status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncpb->value[i]->xsz);
@@ -310,6 +311,7 @@ static int serialize_bufferinfo_array(NC *ncp, void *buf){
     int err;
     sendbuff.pos           = buf;
     sendbuff.base          = buf;
+    sendbuff.version       = ncp->format;
     err = hdr_put_NC_modified_blockarray(&ncp->blocks, &sendbuff);
     if (err != NC_NOERR) {
         DEBUG_RETURN_ERROR(err)
@@ -319,7 +321,7 @@ static int serialize_bufferinfo_array(NC *ncp, void *buf){
 
 static MPI_Offset
 hdr_len_NC_modified_blockarray(const NC_blockarray *ncpb) {
-    size_t buffer_size = 0;
+    MPI_Offset buffer_size = 0;
     int n_modified_blocks = 0;
 
     // Count the number of modified blocks
@@ -332,7 +334,6 @@ hdr_len_NC_modified_blockarray(const NC_blockarray *ncpb) {
     if (ncpb == NULL || n_modified_blocks == 0) {
         // If no modified blocks, size is for ABSENT case
         buffer_size += sizeof(uint32_t); // NC_UNSPECIFIED
-
         buffer_size += sizeof(uint32_t); // ZERO
 
     } else {
@@ -344,7 +345,9 @@ hdr_len_NC_modified_blockarray(const NC_blockarray *ncpb) {
         for (int i = 0; i < ncpb->ndefined; i++) {
             if (ncpb->value[i]->modified) {
                 buffer_size += sizeof(uint32_t); // block ID
-                buffer_size += strlen(ncpb->value[i]->name); // block name
+
+                buffer_size += sizeof(uint32_t) + _RNDUP(ncpb->value[i]->name_len, X_ALIGN); 
+
                 buffer_size += sizeof(uint32_t); // block size
             }
         }
@@ -354,16 +357,32 @@ hdr_len_NC_modified_blockarray(const NC_blockarray *ncpb) {
 }
 
 
-static int deserialize_bufferinfo_array(NC *ncp, void *buf, int *recv_displs, int *new_block_offsets){
+static int deserialize_bufferinfo_array(NC *ncp, void *buf, int *recv_displs, int *new_block_offsets, int total_size, int nproc, int rank){
     bufferinfo recvbuff;
     int err;
     recvbuff.pos           = buf;
     recvbuff.base          = buf;
-    size_t length = sizeof(recv_displs) / sizeof(recv_displs[0]);
-    int nproc = (int)length;
+    recvbuff.chunk = _RNDUP( MAX(MIN_NC_XSZ+4, ncp->chunk), X_ALIGN );
+
+
+    
     for (int i=0; i<nproc; i++){
         recvbuff.pos = recvbuff.base + recv_displs[i];
-        err = hdr_get_NC_modified_blockarray(&recvbuff, &ncp->blocks, i, new_block_offsets);
+        if (i < nproc - 1){
+            // printf("\n nrpoc: %d\n, i: %d", nproc, i);
+            recvbuff.end = recvbuff.base + recv_displs[i + 1];
+        }else{
+            recvbuff.end = recvbuff.base + total_size;
+        }
+        if (i != rank){
+            //only new blockarrays need to be used to update the blockarray
+            //don't overwrite the existing local block - otherwise the block content is lost
+            err = hdr_get_NC_modified_blockarray(&recvbuff, &ncp->blocks, i, new_block_offsets);
+            if (err != NC_NOERR) {
+                return err;
+            }
+        }
+        // err = hdr_get_NC_modified_blockarray(&recvbuff, &ncp->blocks, i, new_block_offsets);
         if (err != NC_NOERR) {
             return err;
         }
@@ -402,8 +421,8 @@ hdr_get_NC_modified_blockarray(bufferinfo *pbp, NC_blockarray *ncpb, int src_ran
 
     /* Allocate memory for the blocks */
     // ncp->blocks = (NC_blockarray *)malloc(sizeof(NC_blockarray));
-    // ncp->blocks.ndefined = nelems;
-    // ncp->blocks.value = (NC_block **)malloc(nelems * sizeof(NC_block*));
+    // ncpb->ndefined = nelems;
+    // ncpb->value = (NC_block **)malloc(nelems * sizeof(NC_block*));
 
     /* Read each block */
     int block_index;
@@ -423,15 +442,22 @@ hdr_get_NC_modified_blockarray(bufferinfo *pbp, NC_blockarray *ncpb, int src_ran
         }
 
         // Read block name
-        status = hdr_get_NC_name(pbp, &ncpb->value[block_index]->name, &ncpb->value[block_index]->name_len);
+        char *block_name;
+        size_t block_name_len;
+        status = hdr_get_NC_name(pbp, &block_name, &block_name_len);
         if (status != NC_NOERR) return status;
+        NC_block *blockp = (NC_block *)malloc(sizeof(NC_block));
+        blockp->name = block_name;
+        blockp->name_len = block_name_len;
 
         // Read block size
         uint32_t block_size;
         status = ncmpix_get_uint32((const void**)(&pbp->pos), &block_size);
         if (status != NC_NOERR) return status;
-        ncpb->value[block_index]->xsz = block_size;
-        // ncpb->value[i]->modified = 1;  // Since it's in the modified block list
+        blockp->xsz = block_size;
+        blockp->modified = 1;  // Since it's in the modified block list
+        ncpb->value[block_index] = blockp;
+        
     }
 
     return NC_NOERR;
@@ -1354,7 +1380,10 @@ ncmpio__enddef(void       *ncdp,
     int rank, nproc;
     char value[MPI_MAX_INFO_VAL];
     NC *ncp = (NC*)ncdp;
+    
     printf("\npncp->ncp->xsz: %lld\n", ncp->xsz);
+    
+
     /* negative values of h_minfree, v_align, v_minfree, r_align have been
      * checked at dispatchers.
      */
@@ -1479,9 +1508,10 @@ ncmpio__enddef(void       *ncdp,
      */
 
     //META:Merge block arrays: collect all modified blocks from all processes
+    
     MPI_Comm_rank(ncp->comm, &rank);
     MPI_Comm_size(ncp->comm, &nproc);
-
+    
     //STEP1: communicate number of new blocks across all processes
     int num_new_blocks;
     num_new_blocks = ncp->blocks.ndefined - ncp->blocks.nread;
@@ -1497,7 +1527,7 @@ ncmpio__enddef(void       *ncdp,
         total_new_blocks += all_num_news[i];
         if(i>0) new_block_offsets[i] = new_block_offsets[i-1] + all_num_news[i-1];
         }
-
+    
     //STEP2: communicate all modified blocks content across all processes
     MPI_Offset local_buff_size;
     local_buff_size = hdr_len_NC_modified_blockarray(&ncp->blocks);
@@ -1531,7 +1561,7 @@ ncmpio__enddef(void       *ncdp,
     ncp->blocks.value = (NC_block**) NCI_Realloc(ncp->blocks.value, new_total * sizeof(NC_block*));
     ncp->blocks.localids = (int*) NCI_Realloc(ncp->blocks.localids, new_total * X_SIZEOF_INT);
     ncp->blocks.globalids = (int*) NCI_Realloc(ncp->blocks.globalids, new_total * X_SIZEOF_INT);
-
+    
     /*
     example: rank0 ABCDE|FG rank1 ABCDE|H  rank2 ABCDE|I ->   ABCDE|FGHI
     after merging rank0 globalids should be 01234|5678 rank1 should be 01234|7568
@@ -1542,9 +1572,11 @@ ncmpio__enddef(void       *ncdp,
     }
 
     for(int i=ncp->blocks.nread; i<ncp->blocks.ndefined;i++){
-        ncp->blocks.value[i + new_block_offsets[rank]] = ncp->blocks.value[i];
+        if (new_block_offsets[rank] > 0){
+            ncp->blocks.value[i + new_block_offsets[rank]] = ncp->blocks.value[i];
+            ncp->blocks.value[i] = NULL;
+        }
         ncp->blocks.globalids[i] = i +  new_block_offsets[rank];
-        ncp->blocks.value[i] = NULL;
     }
     //rank1 globalids is now 01234|7 _ _ _
     for(int i=0;i<new_block_offsets[rank];i++){
@@ -1561,9 +1593,10 @@ ncmpio__enddef(void       *ncdp,
     }
 
     //STEP4: Deseralize buffer to global block array (only name and block size info)
-    err = deserialize_bufferinfo_array(ncp, all_collections_buffer, recv_displs, new_block_offsets);
+    err = deserialize_bufferinfo_array(ncp, all_collections_buffer, recv_displs, new_block_offsets, total_recv_size, nproc, rank);
     ncp->blocks.ndefined = new_total;
-
+    printf("\nlast:ncp->blocks.value[0]->name: %s\n", ncp->blocks.value[0]->name);
+    printf("\nlast:ncp->blocks.value[0]->dims.value[0]->name: %s\n", ncp->blocks.value[0]->dims.value[0]->name);
     CHECK_ERROR(err);
 
     NCI_Free(local_buff);
@@ -1572,11 +1605,11 @@ ncmpio__enddef(void       *ncdp,
     NCI_Free(recv_displs);
     NCI_Free(recvcounts);
     NCI_Free(all_collections_buffer);
-
+    
     err = NC_begins(ncp);
     printf("\nafter NC begin ncp->global_xsz: %lld", ncp->global_xsz);
     CHECK_ERROR(err)
-
+    
     /* update the total number of record variables */
     ncp->vars.num_rec_vars = 0;
     for (i=0; i<ncp->vars.ndefined; i++)
@@ -1643,7 +1676,6 @@ ncmpio__enddef(void       *ncdp,
      * writes the header to file. Note safe_mode error check will be done in
      * write_NC() */
     printf("\nbewfore write NC ncp->global_xsz: %lld", ncp->global_xsz);
-
     status = write_NC(ncp);
 
     /* we should continue to exit define mode, even if header is inconsistent
@@ -1676,7 +1708,7 @@ ncmpio__enddef(void       *ncdp,
     if (ncp->num_subfiles > 1)
         fClr(ncp->ncp_sf->flags, NC_MODE_CREATE | NC_MODE_DEF);
 #endif
-
+   
     return status;
 }
 

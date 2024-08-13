@@ -63,11 +63,11 @@ ncmpi_def_block(int         ncid,    /* IN:  file ID */
 
     /* check if the name string is previously used */
     err = pncp->driver->inq_blkid(pncp->ncp, name, NULL);
-    // if (err != NC_EBADBLK) {
-    //     DEBUG_ASSIGN_ERROR(err, NC_EBADBLK)
-    //     goto err_check;
-    // }
-    // else err = NC_NOERR;
+    if (err != NC_EBADBLK) {
+        DEBUG_ASSIGN_ERROR(err, NC_EBADBLK)
+        goto err_check;
+    }
+    else err = NC_NOERR;
 
 err_check:
     if (pncp->flag & NC_MODE_SAFE) {

@@ -227,11 +227,10 @@ ncmpio_def_dim(void       *ncdp,    /* IN:  NC object */
     dimp->size     = size;
     dimp->name     = nname;
     dimp->name_len = strlen(nname);
-
+    
     /* allocate/expand ncp->blocks.value[blkid]->dims.value array */
     if (ncp->blocks.value[blkid]->dims.ndefined % PNC_ARRAY_GROWBY == 0) {
         size_t alloc_size = (size_t)ncp->blocks.value[blkid]->dims.ndefined + PNC_ARRAY_GROWBY;
-
         ncp->blocks.value[blkid]->dims.value = (NC_dim **) NCI_Realloc(ncp->blocks.value[blkid]->dims.value,
                                       alloc_size * sizeof(NC_dim*));
         if (ncp->blocks.value[blkid]->dims.value == NULL) {
@@ -240,7 +239,7 @@ ncmpio_def_dim(void       *ncdp,    /* IN:  NC object */
             DEBUG_RETURN_ERROR(NC_ENOMEM)
         }
     }
-
+    
     dimid = ncp->blocks.value[blkid]->dims.ndefined;
 
     /* Add a new dim handle to the end of handle array */
@@ -260,6 +259,9 @@ ncmpio_def_dim(void       *ncdp,    /* IN:  NC object */
 #endif
 
     if (dimidp != NULL) *dimidp = dimid;
+
+    
+    
 
     return err;
 }

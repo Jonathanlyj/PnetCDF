@@ -393,7 +393,7 @@ ncmpio_def_var(void       *ncdp,
         memcpy(varp->dimids, dimids, (size_t)ndims * SIZEOF_INT);
 
     /* set up array dimensional structures */
-    err = ncmpio_NC_var_shape64(varp, &ncp->dims);
+    err = ncmpio_NC_var_shape64(varp, &ncp->blocks.value[blkid]->dims);
     if (err != NC_NOERR) {
         ncmpio_free_NC_var(varp);
         nname = NULL; /* already freed in ncmpio_free_NC_var() */

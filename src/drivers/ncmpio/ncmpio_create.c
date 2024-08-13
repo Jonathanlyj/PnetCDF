@@ -267,7 +267,6 @@ ncmpio_create(MPI_Comm     comm,
 
     ncp->ncid = ncid;
     //META
-    // ncp->nblocks = nprocs; /* number of blocks for  */
     ncp->blocks.nread = 0;
 
     /* chunk size for reading header, set to default before check hints */
