@@ -1,0 +1,13 @@
+MPICC=/scratch/yll6162/mpich/mpich-install/bin/mpicc
+NVCC=/usr/local/cuda-11.8/bin/nvcc
+
+CFLAGS = -O0 -g -I/scratch/yll6162/pnetcdf/pnetcdf-install/include -I/usr/local/cuda-11.8/include
+LDFLAGS = -L/usr/local/cuda-11.8/lib64 -lcudart -L/scratch/yll6162/pnetcdf/pnetcdf-install/lib -lpnetcdf
+BUILD_DIR = ./build
+
+collective_write_cu: collective_write_cu.c
+	mkdir -p $(BUILD_DIR)
+	env $(MPICC) $(CFLAGS) -o $(BUILD_DIR)/collective_write_cu collective_write_cu.c $(LDFLAGS)
+
+clean:
+	rm -f $(BUILD_DIR)/*
