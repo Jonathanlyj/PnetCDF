@@ -457,7 +457,7 @@ hdr_put_NC_blockarray(bufferinfo        *pbp,
 
     assert(pbp != NULL);
 
-    if (ncp == NULL || ncp->nblocks == 0) { /* ABSENT */
+    if (ncp == NULL || ncp->blocks.ndefined == 0) { /* ABSENT */
         status = ncmpix_put_uint32((void**)(&pbp->pos), NC_UNSPECIFIED);
         if (status != NC_NOERR) return status;
 
@@ -475,21 +475,22 @@ hdr_put_NC_blockarray(bufferinfo        *pbp,
 
         /* copy nelems */
         if (pbp->version < 5)
-            status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncp->nblocks);
+            status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncp->blocks.ndefined);
         else
-            status = ncmpix_put_uint64((void**)(&pbp->pos), (uint64)ncp->nblocks);
+            status = ncmpix_put_uint64((void**)(&pbp->pos), (uint64)ncp->blocks.ndefined);
         if (status != NC_NOERR) return status;
 
         /* copy name OFFSET block_size*/
     /* copy [dimid ...] */
     for (i=0; i<ncp->blocks.ndefined; i++) {
         status = hdr_put_NC_name(pbp, ncp->blocks.value[i]->name);
+        printf("ncp->blocks.value[i]->begin %u\n", ncp->blocks.value[i]->begin);
         if (pbp->version < 5)
+
             status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncp->blocks.value[i]->begin);
         else
             status = ncmpix_put_uint64((void**)(&pbp->pos), (uint64)ncp->blocks.value[i]->begin);
-        if (status != NC_NOERR) return status;
-
+        printf("ncp->blocks.value[i]->xsz %u\n", ncp->blocks.value[i]->xsz);
         if (pbp->version < 5)
             status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncp->blocks.value[i]->xsz);
         else
@@ -526,18 +527,21 @@ ncmpio_global_hdr_put_NC(NC *ncp, void *buf)
      * header       = global_header local_header
      * global_header= magic numrecs gatt_list block_offset_list
      */
-
+    
     /* copy "magic", 4 characters */
     if (ncp->format == 5) {
         putbuf.version = 5;
+
         status = ncmpix_putn_text((void **)(&putbuf.pos), sizeof(ncmagic5), ncmagic5);
     }
     else if (ncp->format == 2) {
         putbuf.version = 2;
+
         status = ncmpix_putn_text((void **)(&putbuf.pos), sizeof(ncmagic2), ncmagic2);
     }
     else {
         putbuf.version = 1;
+
         status = ncmpix_putn_text((void **)(&putbuf.pos), sizeof(ncmagic1), ncmagic1);
     }
     if (status != NC_NOERR) return status;

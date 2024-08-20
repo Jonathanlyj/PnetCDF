@@ -423,7 +423,7 @@ struct NC {
 #endif
     int           striping_unit; /* stripe size of the file */
     int           chunk;       /* chunk size for reading header, one chunk at a time */
-    int          nblocks;      /* META: number of header blocks*/
+    // int          nblocks;      /* META: number of header blocks*/
     MPI_Offset    h_align;     /* file alignment for header size */
     MPI_Offset    v_align;     /* alignment of the beginning of fixed-size variables */
     MPI_Offset    r_align;     /* file alignment for record variable section */
@@ -538,8 +538,8 @@ ncmpio_hdr_len_NC(const NC *ncp);
 extern MPI_Offset
 ncmpio_global_hdr_len_NC(const NC *ncp);
 /*META*/
-// extern MPI_Offset
-// ncmpio_local_hdr_len_NC(const NC *ncp, int block_index);
+extern MPI_Offset
+ncmpio_block_hdr_len_NC(const NC *ncp, int block_index);
 
 extern int
 ncmpio_hdr_get_NC(NC *ncp);

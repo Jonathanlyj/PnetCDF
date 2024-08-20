@@ -1400,43 +1400,36 @@ ncmpio_global_hdr_len_NC(const NC *ncp)
 
 
 // /*META*/
-// /*----< ncmpio_local_hdr_len_NC() >------------------------------------------------*/
-// MPI_Offset
-// ncmpio_local_hdr_len_NC(NC *ncp, int block_index)
-// {
-//     /* netCDF file format:
-//      * netcdf_file = header  data
-//      * header = global_header  local_header
-//      * local_header  = [header_block ...]
-//      * header_block = dim_list var_list
-//      *  ...
-//      * numrecs     = NON_NEG | STREAMING   // length of record dimension
-//      * NON_NEG     = <non-negative INT> |  // CDF-1 and CDF-2
-//      *               <non-negative INT64>  // CDF-5
-//      */
+/*----< ncmpio_block_hdr_len_NC() >------------------------------------------------*/
+MPI_Offset
+ncmpio_block_hdr_len_NC(const NC *ncp, int block_index)
+{   /*
+     * header_block = dim_list var_list
+     *  ...
+     */
 
-//     int sizeof_NON_NEG, sizeof_off_t;
-//     MPI_Offset xlen;
+    int sizeof_NON_NEG, sizeof_off_t;
+    MPI_Offset xlen;
 
-//     assert(ncp != NULL);
+    assert(ncp != NULL);
 
-//     if (ncp->format == 5) {        /* CDF-5 */
-//         sizeof_NON_NEG = X_SIZEOF_INT64; /* 8-byte integer for all integers */
-//         sizeof_off_t   = X_SIZEOF_INT64; /* 8-byte integer for var begin */
-//     }
-//     else if (ncp->format == 2) { /* CDF-2 */
-//         sizeof_NON_NEG = X_SIZEOF_INT; /* 4-byte integer in CDF-1 */
-//         sizeof_off_t   = X_SIZEOF_INT64; /* 8-byte integer for var begin */
-//     }
-//     else { /* CDF-1 */
-//         sizeof_NON_NEG = X_SIZEOF_INT; /* 4-byte integer in CDF-1 */
-//         sizeof_off_t   = X_SIZEOF_INT; /* 4-byte integer in CDF-1 */
-//     }
+    if (ncp->format == 5) {        /* CDF-5 */
+        sizeof_NON_NEG = X_SIZEOF_INT64; /* 8-byte integer for all integers */
+        sizeof_off_t   = X_SIZEOF_INT64; /* 8-byte integer for var begin */
+    }
+    else if (ncp->format == 2) { /* CDF-2 */
+        sizeof_NON_NEG = X_SIZEOF_INT; /* 4-byte integer in CDF-1 */
+        sizeof_off_t   = X_SIZEOF_INT64; /* 8-byte integer for var begin */
+    }
+    else { /* CDF-1 */
+        sizeof_NON_NEG = X_SIZEOF_INT; /* 4-byte integer in CDF-1 */
+        sizeof_off_t   = X_SIZEOF_INT; /* 4-byte integer in CDF-1 */
+    }
 
-//     xlen += hdr_len_NC_dimarray(&ncp->blocks->valuep[block_index]->dims,   sizeof_NON_NEG);               /* dim_list */
-//     xlen += hdr_len_NC_vararray(&ncp->blocks->valuep[block_index]->vars,   sizeof_NON_NEG, sizeof_off_t); /* var_list */
-//     return xlen; /* return the header size (not yet aligned) */
-// }
+    xlen += hdr_len_NC_dimarray(&ncp->blocks.value[block_index]->dims,   sizeof_NON_NEG);               /* dim_list */
+    xlen += hdr_len_NC_vararray(&ncp->blocks.value[block_index]->vars,   sizeof_NON_NEG, sizeof_off_t); /* var_list */
+    return xlen; /* return the header size (not yet aligned) */
+}
 
 /*----< ncmpio_hdr_get_NC() >------------------------------------------------*/
 /*  CDF format specification

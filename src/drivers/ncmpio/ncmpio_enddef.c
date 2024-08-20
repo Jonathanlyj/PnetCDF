@@ -20,7 +20,7 @@
 #include <string.h>  /* memset() */
 #include <assert.h>
 #include <errno.h>
-
+#include <ctype.h>
 #include <mpi.h>
 
 #include <pnc_debug.h>
@@ -781,6 +781,18 @@ NC_begins(NC *ncp)
     return NC_NOERR;
 }
 
+
+void print_buffer_ascii(const unsigned char* buffer, size_t length) {
+    for (size_t i = 0; i < length; i++) {
+        if (isprint(buffer[i])) {
+            printf("%c", buffer[i]);
+        } else {
+            printf(".");
+        }
+    }
+    printf("\n");
+}
+
 /*----< write_NC() >---------------------------------------------------------*/
 /*
  * This function is collective and only called by enddef().
@@ -848,9 +860,10 @@ write_NC(NC *ncp)
         /* Do not write padding area (between ncp->xsz and ncp->begin_var) */
         buf = (char*)NCI_Malloc(global_header_wlen);
 #endif
-
         /* copy the entire local header object to buf */
         status = ncmpio_global_hdr_put_NC(ncp, buf);
+        print_buffer_ascii(buf, global_header_wlen);
+
         if (status != NC_NOERR) /* a fatal error */
             goto fn_exit;
 
@@ -873,6 +886,7 @@ write_NC(NC *ncp)
         buf_ptr = buf;
         for (i=0; i<ntimes; i++) {
             int bufCount = (int) MIN(remain, NC_MAX_INT);
+            printf("\nwrite global header at offset %lld, bufCount: %d", offset, bufCount);
             if (fIsSet(ncp->flags, NC_HCOLL))
                 TRACE_IO(MPI_File_write_at_all)(ncp->collective_fh, offset, buf_ptr,
                                                 bufCount, MPI_BYTE, &mpistatus);
@@ -1507,6 +1521,10 @@ ncmpio__enddef(void       *ncdp,
      * all processes.
      */
 
+    //META: calculate block size
+    for (i=0; i<ncp->blocks.ndefined; i++) {
+        ncp->blocks.value[i]->xsz = ncmpio_block_hdr_len_NC(ncp, i);
+    }
     //META:Merge block arrays: collect all modified blocks from all processes
     
     MPI_Comm_rank(ncp->comm, &rank);
