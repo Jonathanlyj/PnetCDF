@@ -412,7 +412,7 @@ ncmpio_def_var(void       *ncdp,
             goto err_check;
         }
     }
-
+    // printf("\n varid is set as : %d\n", local_block->vars.ndefined);
     varp->varid = local_block->vars.ndefined; /* varid */
 
     /* Add a new handle to the end of an array of handles */
@@ -455,6 +455,7 @@ err_check:
 #endif
 
     if (varidp != NULL) *varidp = varp->varid;
+
 
     /* default is NOFILL */
     varp->no_fill = 1;

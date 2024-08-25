@@ -83,9 +83,12 @@ ncmpio_def_block(void       *ncdp,    /* IN:  NC object */
     ncp->blocks.value[blkid]->dims.ndefined = 0;
     ncp->blocks.value[blkid]->dims.value = NULL;
     ncp->blocks.value[blkid]->dims.nameT = NULL;
+    ncp->blocks.value[blkid]->dims.hash_size = ncp->hash_size_dim;
     ncp->blocks.value[blkid]->vars.ndefined = 0;
     ncp->blocks.value[blkid]->vars.value = NULL;
     ncp->blocks.value[blkid]->vars.nameT = NULL;
+    ncp->blocks.value[blkid]->vars.hash_size = ncp->hash_size_var;
+
 
 #ifndef SEARCH_NAME_LINEARLY
     /* allocate hashing lookup table, if not allocated yet */
@@ -160,11 +163,8 @@ ncmpio_free_NC_block(NC_block *ncap)
     if (ncap == NULL) return;
     
     NCI_Free(ncap->name);
-    
-
     ncmpio_free_NC_dimarray(&ncap->dims);
     ncmpio_free_NC_vararray(&ncap->vars);
-
 }
 
 /*----< ncmpio_free_NC_blockarray() >-----------------------------------------*/
@@ -183,7 +183,6 @@ ncmpio_free_NC_blockarray(NC_blockarray *ncap)
 
         for (i=0; i<ncap->ndefined; i++) {
             if (ncap->value[i] == NULL) continue;
-            
             ncmpio_free_NC_block(ncap->value[i]);
             NCI_Free(ncap->value[i]);
         }

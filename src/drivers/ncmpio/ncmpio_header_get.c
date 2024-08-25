@@ -1392,9 +1392,9 @@ ncmpio_global_hdr_len_NC(const NC *ncp)
     xlen  = NC_MAGIC_LEN;                                                    /* magic */
     xlen += sizeof_NON_NEG;                                                  /* numrecs */
     xlen += hdr_len_NC_attrarray(&ncp->attrs, sizeof_NON_NEG);               /* gatt_list */
-    printf("\nxlen = %lld\n", xlen);
+    // printf("\nxlen = %lld\n", xlen);
     xlen += hdr_len_NC_blockinfo_array(&ncp->blocks, sizeof_NON_NEG, sizeof_off_t);    /* block_begins */
-    printf("\nxlen = %lld\n", xlen);
+    // printf("\nxlen = %lld\n", xlen);
     return xlen; /* return the header size (not yet aligned) */
 } 
 

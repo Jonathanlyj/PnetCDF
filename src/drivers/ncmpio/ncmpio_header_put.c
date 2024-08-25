@@ -484,7 +484,7 @@ hdr_put_NC_blockarray(bufferinfo        *pbp,
     /* copy [dimid ...] */
     for (i=0; i<ncp->blocks.ndefined; i++) {
         status = hdr_put_NC_name(pbp, ncp->blocks.value[i]->name);
-        printf("ncp->blocks.value[i]->begin %u\n", ncp->blocks.value[i]->begin);
+        printf("ncp->blocks.value[%d]->begin %u\n", i, ncp->blocks.value[i]->begin);
         if (pbp->version < 5)
 
             status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncp->blocks.value[i]->begin);
