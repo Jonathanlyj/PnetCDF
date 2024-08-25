@@ -56,10 +56,10 @@ ncmpi_def_block(int         ncid,    /* IN:  file ID */
     /* MPI_Offset is usually a signed value, but serial netcdf uses size_t.
      * In 1999 ISO C standard, size_t is an unsigned integer type of at least
      * 16 bit. */
-    // if (pncp->nblocks == NC_MAX_INT) {
-    //     DEBUG_ASSIGN_ERROR(err, NC_EMAXBLKS)
-    //     goto err_check;
-    // }
+    if (pncp->nblocks == NC_MAX_INT) {
+        DEBUG_ASSIGN_ERROR(err, NC_EMAXBLKS)
+        goto err_check;
+    }
 
     /* check if the name string is previously used */
     err = pncp->driver->inq_blkid(pncp->ncp, name, NULL);
@@ -88,6 +88,14 @@ err_check:
     /* calling the subroutine that implements ncmpi_def_block() */
     err = pncp->driver->def_block(pncp->ncp, name, &blkid);
     if (err != NC_NOERR) return err;
+    if (pncp->nblocks % PNC_BLOCKS_CHUNK == 0)
+        pncp->blocks = NCI_Realloc(pncp->blocks,
+                                 (pncp->nblocks+PNC_BLOCKS_CHUNK)*sizeof(PNC_block));
+    pncp->blocks[pncp->nblocks].ndims = 0;
+    pncp->blocks[pncp->nblocks].nvars = 0;
+    pncp->blocks[pncp->nblocks].nrec_vars = 0;
+    pncp->blocks[pncp->nblocks].vars = NULL;
+    pncp->blocks[pncp->nblocks].unlimdimid = -1;
 
     pncp->nblocks++;//we increment the number of blocks of pncp here but it is supposed to be the total across all processes
 

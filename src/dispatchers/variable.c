@@ -205,33 +205,33 @@ err_check:
     err = pncp->driver->def_var(pncp->ncp, blkid, name, type, ndims, dimids, varidp);
     if (err != NC_NOERR) return err;
     printf("\nvaridp: %d\n", *varidp);
-    // assert(*varidp == pncp->nvars);
+    assert(*varidp == pncp->blocks[blkid].nvars);
 
-    // /* add new variable into pnc-vars[] */
-    // if (pncp->nvars % PNC_VARS_CHUNK == 0)
-    //     pncp->vars = NCI_Realloc(pncp->vars,
-    //                              (pncp->nvars+PNC_VARS_CHUNK)*sizeof(PNC_var));
+    /* add new variable into pnc-vars[] */
+    if (pncp->blocks[blkid].nvars % PNC_VARS_CHUNK == 0)
+        pncp->blocks[blkid].vars = NCI_Realloc(pncp->blocks[blkid].vars,
+                                 (pncp->blocks[blkid].nvars+PNC_VARS_CHUNK)*sizeof(PNC_var));
 
-    // pncp->vars[*varidp].ndims  = ndims;
-    // pncp->vars[*varidp].xtype  = type;
-    // pncp->vars[*varidp].recdim = -1;   /* if fixed-size variable */
-    // pncp->vars[*varidp].shape  = NULL;
-    // if (ndims > 0) {
-    //     if (dimids[0] == pncp->unlimdimid) { /* record variable */
-    //         pncp->vars[*varidp].recdim = pncp->unlimdimid;
-    //         pncp->nrec_vars++;
-    //     }
+    pncp->blocks[blkid].vars[*varidp].ndims  = ndims;
+    pncp->blocks[blkid].vars[*varidp].xtype  = type;
+    pncp->blocks[blkid].vars[*varidp].recdim = -1;   /* if fixed-size variable */
+    pncp->blocks[blkid].vars[*varidp].shape  = NULL;
+    if (ndims > 0) {
+        if (dimids[0] == pncp->blocks[blkid].unlimdimid) { /* record variable */
+            pncp->blocks[blkid].vars[*varidp].recdim = pncp->blocks[blkid].unlimdimid;
+            pncp->blocks[blkid].nrec_vars++;
+        }
 
-    //     pncp->vars[*varidp].shape = (MPI_Offset*)
-    //                                 NCI_Malloc(ndims * SIZEOF_MPI_OFFSET);
-    //     for (i=0; i<ndims; i++) {
-    //         /* obtain size of dimension i */
-    //         err = pncp->driver->inq_dim(pncp->ncp, blkid, dimids[i], NULL,
-    //                                     pncp->vars[*varidp].shape+i);
-    //         if (err != NC_NOERR) return err;
-    //     }
-    // }
-    // pncp->nvars++;
+        pncp->blocks[blkid].vars[*varidp].shape = (MPI_Offset*)
+                                    NCI_Malloc(ndims * SIZEOF_MPI_OFFSET);
+        for (i=0; i<ndims; i++) {
+            /* obtain size of dimension i */
+            err = pncp->driver->inq_dim(pncp->ncp, blkid, dimids[i], NULL,
+                                        pncp->blocks[blkid].vars[*varidp].shape+i);
+            if (err != NC_NOERR) return err;
+        }
+    }
+    pncp->blocks[blkid].nvars++;
 
     return NC_NOERR;
 }

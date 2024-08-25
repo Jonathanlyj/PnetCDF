@@ -601,6 +601,7 @@ define(`IGETPUT_API',dnl
  */
 int
 ncmpio_i$1_var(void             *ncdp,
+               int               blkid,
                int               varid,
                const MPI_Offset *start, /* cannot be NULL */
                const MPI_Offset *count, /* cannot be NULL */
@@ -613,10 +614,13 @@ ncmpio_i$1_var(void             *ncdp,
                int               reqMode)
 {
     NC *ncp=(NC*)ncdp;
+    NC_block *local_block;
+    blkid = ncp->blocks.globalids[blkid];
+    local_block = ncp->blocks.value[blkid];
 
     /* Note sanity check for ncdp and varid has been done in dispatchers */
 
-    return ncmpio_igetput_varm(ncp, ncp->vars.value[varid], start, count,
+    return ncmpio_igetput_varm(ncp, local_block->vars.value[varid], start, count,
                                stride, imap, (void*)buf, bufcount, buftype,
                                reqid, reqMode);
 }

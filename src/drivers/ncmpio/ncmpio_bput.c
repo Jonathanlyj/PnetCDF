@@ -122,6 +122,7 @@ ncmpio_buffer_detach(void       *ncdp,
 /*----< ncmpio_bput_var() >--------------------------------------------------*/
 int
 ncmpio_bput_var(void             *ncdp,
+                int               blkid,
                 int               varid,
                 const MPI_Offset *start,
                 const MPI_Offset *count,
@@ -134,13 +135,16 @@ ncmpio_bput_var(void             *ncdp,
                 int               reqMode)
 {
     NC *ncp=(NC*)ncdp;
+    NC_block *local_block;
+    blkid = ncp->blocks.globalids[blkid];
+    local_block = ncp->blocks.value[blkid];
 
     /* buffer has not been attached yet */
     if (ncp->abuf == NULL) DEBUG_RETURN_ERROR(NC_ENULLABUF)
 
     /* Note sanity check for ncdp and varid has been done in dispatchers */
 
-    return ncmpio_igetput_varm(ncp, ncp->vars.value[varid], start, count,
+    return ncmpio_igetput_varm(ncp, local_block->vars.value[varid], start, count,
                                stride, imap, (void*)buf, bufcount, buftype,
                                reqid, reqMode);
 }

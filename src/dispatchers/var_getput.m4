@@ -131,6 +131,7 @@ int check_EEDGE(const MPI_Offset *start,
 /*----< check_start_count_stride() >-----------------------------------------*/
 static
 int check_start_count_stride(PNC              *pncp,
+                             int               blkid,
                              int               varid,
                              int               isRead,
                              NC_api            api_kind, /* var1/vara/vars */
@@ -142,10 +143,10 @@ int check_start_count_stride(PNC              *pncp,
     int i, err, ndims, firstDim;
     MPI_Offset *shape=NULL;
 
-    shape = pncp->vars[varid].shape;
+    shape = pncp->blocks[blkid].vars[varid].shape;
     /* if record variable, obtain the current size of record dimension */
-    if (pncp->vars[varid].recdim >= 0) {
-        err = pncp->driver->inq_dim(pncp->ncp, 0, pncp->vars[varid].recdim, NULL,
+    if (pncp->blocks[blkid].vars[varid].recdim >= 0) {
+        err = pncp->driver->inq_dim(pncp->ncp, 0, pncp->blocks[blkid].vars[varid].recdim, NULL,
                                     &shape[0]);
         if (err != NC_NOERR) return err;
     }
@@ -157,7 +158,7 @@ int check_start_count_stride(PNC              *pncp,
 
     firstDim = 0;
     /* check NC_EINVALCOORDS for record dimension */
-    if (pncp->vars[varid].recdim >= 0) {
+    if (pncp->blocks[blkid].vars[varid].recdim >= 0) {
         if ((pncp->format <= NC_FORMAT_CDF2 ||
              pncp->format == NC_FORMAT_NETCDF4_CLASSIC) &&
             start[0] > NC_MAX_UINT)
@@ -178,7 +179,7 @@ int check_start_count_stride(PNC              *pncp,
     }
 
     /* continue to check NC_EINVALCOORDS for the rest dimensions */
-    ndims = pncp->vars[varid].ndims;
+    ndims = pncp->blocks[blkid].vars[varid].ndims;
     for (i=firstDim; i<ndims; i++) {
         MPI_Offset len = (count == NULL) ? 1 : count[i];
         err = check_EINVALCOORDS(pncp->flag & NC_MODE_STRICT_COORD_BOUND,
@@ -197,7 +198,7 @@ int check_start_count_stride(PNC              *pncp,
     else {
         firstDim = 0;
         /* check record dimension */
-        if (pncp->vars[varid].recdim >= 0) {
+        if (pncp->blocks[blkid].vars[varid].recdim >= 0) {
             if (count[0] < 0)  /* no negative count[] */
                 DEBUG_RETURN_ERROR(NC_ENEGATIVECNT)
 
@@ -332,6 +333,7 @@ define(`GETPUT_API',dnl
 /* This API is ifelse(`$4',`',`an independent',`a collective') subroutine. */
 int
 APINAME($1,$2,$3,$4)(int ncid,
+                     int blkid,
                      int varid,
                      ArgKind($2)
                      BufArgs($1,$3))
@@ -350,15 +352,15 @@ APINAME($1,$2,$3,$4)(int ncid,
     err = PNC_check_id(ncid, &pncp);
     if (err != NC_NOERR) return err;
 
-    err = sanity_check(pncp, varid, IO_TYPE($1), ITYPE2MPI($3), IS_COLL($4));
+    //err = sanity_check(pncp, varid, IO_TYPE($1), ITYPE2MPI($3), IS_COLL($4));
 
     ifelse(`$2',`m',`if (imap == NULL && stride != NULL) api_kind = API_VARS;
     else if (imap == NULL && stride == NULL) api_kind = API_VARA;',
            `$2',`s',`if (stride == NULL) api_kind = API_VARA;')
 
     ifelse(`$2',`',`',`/* not-scalar variable checks start, count, stride */
-    if (err == NC_NOERR && pncp->vars[varid].ndims > 0)
-        err = check_start_count_stride(pncp, varid, IS_READ($1), api_kind,
+    if (err == NC_NOERR && pncp->blocks[blkid].vars[varid].ndims > 0)
+        err = check_start_count_stride(pncp, blkid, varid, IS_READ($1), api_kind,
                                        IndexArgs($2));')
 
     ifelse(`$3',`',`
@@ -397,13 +399,13 @@ APINAME($1,$2,$3,$4)(int ncid,
     reqMode |= IO_MODE($1) | NB_MODE($1) | FLEX_MODE($3) | COLL_MODE($4);
 
     ifelse(`$2',`',`ifelse(`$4',`_all',`if (err == NC_NOERR)')
-            GET_FULL_DIMENSIONS(pncp, pncp->vars[varid], start, count)
+            GET_FULL_DIMENSIONS(pncp, pncp->blocks[blkid].vars[varid], start, count)
             ifelse(`$4',`',`if (err != NC_NOERR) return err;')')
     ifelse(`$2',`1',`ifelse(`$4',`_all',`if (err == NC_NOERR)')
-            GET_ONE_COUNT(pncp->vars[varid].ndims, count)')
+            GET_ONE_COUNT(pncp->blocks[blkid].vars[varid].ndims, count)')
 
     /* call the subroutine that implements APINAME($1,$2,$3,$4)() */
-    status = pncp->driver->`$1'_var(pncp->ncp, varid, start, count,
+    status = pncp->driver->`$1'_var(pncp->ncp, blkid, varid, start, count,
                                     ArgStrideMap($2), buf,
                                     FLEX_ARG($3), reqMode);
 
@@ -450,6 +452,7 @@ define(`VARN',dnl
 /* This API is ifelse(`$3',`',`an independent',`a collective') subroutine. */
 int
 NAPINAME($1,$2,$3)(int                ncid,
+                   int                blkid,
                    int                varid,
                    int                num,
                    MPI_Offset* const *starts,
@@ -472,7 +475,7 @@ NAPINAME($1,$2,$3)(int                ncid,
 
     if (num == 0) goto err_check;
 
-    if (pncp->vars[varid].ndims == 0) { /* scalar variable */
+    if (pncp->blocks[blkid].vars[varid].ndims == 0) { /* scalar variable */
         isScalar = 1;
         if (num != 1) DEBUG_ASSIGN_ERROR(err, NC_EINVAL)
     }
@@ -499,7 +502,7 @@ NAPINAME($1,$2,$3)(int                ncid,
                 api = API_VARA;
                 count = counts[i];
             }
-            err = check_start_count_stride(pncp, varid, IS_READ($1),
+            err = check_start_count_stride(pncp, blkid, varid, IS_READ($1),
                                            api, starts[i], count, NULL);
             if (err != NC_NOERR) break;
         }
@@ -577,7 +580,7 @@ define(`MVAR',dnl
 /*----< MAPINAME($1,$2,$3,$4)() >--------------------------------------------*/
 /* This API is ifelse(`$4',`',`an independent',`a collective') subroutine. */
 int
-MAPINAME($1,$2,$3,$4)(int                ncid,
+MAPINAME($1,$2,$3,$4)(int                ncid, 
                       int                nvars,
                       int               *varids,
    ifelse(`$2', `1', `MPI_Offset* const *starts,',
@@ -625,8 +628,8 @@ MAPINAME($1,$2,$3,$4)(int                ncid,
             MPI_Offset *stride=NULL;
             ifelse(`$2',`m',`if (strides != NULL) stride = strides[i];',
                    `$2',`s',`if (strides != NULL) stride = strides[i];')
-            err = check_start_count_stride(pncp, varids[i], IS_READ($1),
-                                           api_kind, MStartCount($2), stride);
+            /*err = check_start_count_stride(pncp, varids[i], IS_READ($1),
+                                           api_kind, MStartCount($2), stride);*/
             if (err != NC_NOERR) break;
         }')
         ifelse(`$3',`',`
@@ -673,7 +676,6 @@ MAPINAME($1,$2,$3,$4)(int                ncid,
         ifelse(`$2',`s',`if (strides != NULL) stride = strides[i];',
                `$2',`m',`if (strides != NULL) stride = strides[i];
         if (imaps != NULL) imap = imaps[i];')
-
         err = pncp->driver->i`$1'_var(pncp->ncp, varids[i], start, count,
                                       stride, imap, bufs[i],
                                       ifelse(`$3',`',`bufcounts[i],buftypes[i]',
@@ -708,6 +710,7 @@ define(`IGETPUT_API',dnl
  */
 int
 IAPINAME($1,$2,$3)(int ncid,
+                   int blkid,
                    int varid,
                    ArgKind($2)
                    BufArgs(substr($1,1),$3),
@@ -751,8 +754,8 @@ IAPINAME($1,$2,$3)(int ncid,
            `$2',`s',`if (stride == NULL) api_kind = API_VARA;')
 
     ifelse(`$2',`',`',`/* not-scalar variable checks start, count, stride */
-    if (pncp->vars[varid].ndims > 0) {
-        err = check_start_count_stride(pncp, varid, IS_READ($1), api_kind,
+    if (pncp->blocks[blkid].vars[varid].ndims > 0) {
+        err = check_start_count_stride(pncp, blkid, varid, IS_READ($1), api_kind,
                                        IndexArgs($2));
         if (err != NC_NOERR) return err;
     }')
@@ -775,12 +778,12 @@ IAPINAME($1,$2,$3)(int ncid,
     reqMode = IO_MODE($1) | NB_MODE($1) | FLEX_MODE($3);')
 
     ifelse(`$2',`',
-    `GET_FULL_DIMENSIONS(pncp, pncp->vars[varid], start, count)
+    `GET_FULL_DIMENSIONS(pncp, pncp->blocks[blkid].vars[varid], start, count)
      if (err != NC_NOERR) return err;',
-    `$2',`1',`GET_ONE_COUNT(pncp->vars[varid].ndims, count)')
+    `$2',`1',`GET_ONE_COUNT(pncp->blocks[blkid].vars[varid].ndims, count)')
 
     /* calling the subroutine that implements IAPINAME($1,$2,$3)() */
-    err = pncp->driver->`$1'_var(pncp->ncp, varid, start, count,
+    err = pncp->driver->`$1'_var(pncp->ncp, blkid, varid, start, count,
                                  ArgStrideMap($2), buf,
                                  FLEX_ARG($3), reqid, reqMode);
 
@@ -826,6 +829,7 @@ define(`IVARN',dnl
  */
 int
 INAPINAME($1,$2)(int                ncid,
+                 int                blkid,
                  int                varid,
                  int                num,
                  MPI_Offset* const *starts,
@@ -883,14 +887,14 @@ INAPINAME($1,$2)(int                ncid,
     ifelse(`$1',`bput',`reqMode |= IO_MODE($1) | FLEX_MODE($2);',`
     reqMode = IO_MODE($1) | NB_MODE($1) | FLEX_MODE($2);')
 
-    if (pncp->vars[varid].ndims == 0) { /* scalar variable */
+    if (pncp->blocks[blkid].vars[varid].ndims == 0) { /* scalar variable */
         MPI_Offset start[1]={0}, count[1]={1};
 
         if (num != 1) DEBUG_RETURN_ERROR(NC_EINVAL)
 
         /* starts can be NULL. If not starts[0][0] should be 0 */
         /* calling the subroutine that implements `$1'_var1 */
-        return pncp->driver->`$1'_var(pncp->ncp, varid, start, count, NULL,
+        return pncp->driver->`$1'_var(pncp->ncp, blkid, varid, start, count, NULL,
                                       NULL, buf, FLEX_ARG($2), reqid, reqMode);
     }
     else { /* non-scalar variables */
@@ -908,14 +912,14 @@ INAPINAME($1,$2)(int                ncid,
                 api = API_VARA;
                 count = counts[i];
             }
-            err = check_start_count_stride(pncp, varid, IS_READ($1),
+            err = check_start_count_stride(pncp, blkid, varid, IS_READ($1),
                                            api, starts[i], count, NULL);
             if (err != NC_NOERR) return err;
         }
     }
 
     /* calling the subroutine that implements INAPINAME($1,$2)() */
-    return pncp->driver->`$1'_varn(pncp->ncp, varid, num, starts, counts,
+    return pncp->driver->`$1'_varn(pncp->ncp, blkid, varid, num, starts, counts,
                                    buf, FLEX_ARG($2), reqid, reqMode);
 }
 ')dnl
@@ -933,6 +937,7 @@ define(`VARD',dnl
 /* This API is ifelse(`$4',`',`an independent',`a collective') subroutine. */
 int
 ncmpi_$1_vard$2(int           ncid,
+                int           blkid,
                 int           varid,
                 MPI_Datatype  filetype,  /* access layout to the variable in file */
                 ifelse($1, `get', `void *buf', `const void *buf'),
@@ -950,7 +955,7 @@ ncmpi_$1_vard$2(int           ncid,
     err = PNC_check_id(ncid, &pncp);
     if (err != NC_NOERR) return err;
 
-    err = sanity_check(pncp, varid, IO_TYPE($1), MPI_DATATYPE_NULL, IS_COLL($2));
+    //err = sanity_check(pncp, varid, IO_TYPE($1), MPI_DATATYPE_NULL, IS_COLL($2));
 
     /* when bufcount == NC_COUNT_IGNORE, buftype must be an MPI predefined datatype */
     if (err == NC_NOERR &&
@@ -986,7 +991,7 @@ ncmpi_$1_vard$2(int           ncid,
     reqMode |= IO_MODE($1) | NC_REQ_BLK | NC_REQ_FLEX | COLL_MODE($2);
 
     /* calling the subroutine that implements ncmpi_$1_vard$2() */
-    status = pncp->driver->$1_vard(pncp->ncp, varid, filetype, buf,
+    status = pncp->driver->$1_vard(pncp->ncp, blkid, varid, filetype, buf,
                                    bufcount, buftype, reqMode);
 
     return ifelse(`$2',`',`status;',`(err != NC_NOERR) ? err : status; /* first error encountered */')

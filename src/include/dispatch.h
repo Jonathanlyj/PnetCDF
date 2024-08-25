@@ -90,23 +90,23 @@ struct PNC_driver {
     int (*inq_var)(void*,int,int,char*,nc_type*,int*,int*,int*,MPI_Offset*,int*,void*);
     int (*inq_varid)(void*,const char*,int,int*);
     int (*rename_var)(void*,int,int,const char*);
-
-    int (*get_var)(void*,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,void*,MPI_Offset,MPI_Datatype,int);
-    int (*put_var)(void*,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const void*,MPI_Offset,MPI_Datatype,int);
+    //META: all put_var function add blkid as an argument
+    int (*get_var)(void*,int,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,void*,MPI_Offset,MPI_Datatype,int);
+    int (*put_var)(void*,int,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const void*,MPI_Offset,MPI_Datatype,int);
 
     int (*get_varn)(void*,int,int,MPI_Offset* const*,MPI_Offset* const*,void*,MPI_Offset,MPI_Datatype,int);
-    int (*put_varn)(void*,int,int,MPI_Offset* const*,MPI_Offset* const*,const void*,MPI_Offset,MPI_Datatype,int);
+    int (*put_varn)(void*,int,int,int,MPI_Offset* const*,MPI_Offset* const*,const void*,MPI_Offset,MPI_Datatype,int);
 
-    int (*get_vard)(void*,int,MPI_Datatype,void*,MPI_Offset,MPI_Datatype,int);
-    int (*put_vard)(void*,int,MPI_Datatype,const void*,MPI_Offset,MPI_Datatype,int);
+    int (*get_vard)(void*,int,int,MPI_Datatype,void*,MPI_Offset,MPI_Datatype,int);
+    int (*put_vard)(void*,int,int,MPI_Datatype,const void*,MPI_Offset,MPI_Datatype,int);
 
-    int (*iget_var)(void*,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,void*,MPI_Offset,MPI_Datatype,int*,int);
-    int (*iput_var)(void*,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const void*,MPI_Offset,MPI_Datatype,int*,int);
-    int (*bput_var)(void*,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const void*,MPI_Offset,MPI_Datatype,int*,int);
+    int (*iget_var)(void*,int,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,void*,MPI_Offset,MPI_Datatype,int*,int);
+    int (*iput_var)(void*,int,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const void*,MPI_Offset,MPI_Datatype,int*,int);
+    int (*bput_var)(void*,int,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const void*,MPI_Offset,MPI_Datatype,int*,int);
 
-    int (*iget_varn)(void*,int,int,MPI_Offset* const*,MPI_Offset* const*,void*,MPI_Offset,MPI_Datatype,int*,int);
-    int (*iput_varn)(void*,int,int,MPI_Offset* const*,MPI_Offset* const*,const void*,MPI_Offset,MPI_Datatype,int*,int);
-    int (*bput_varn)(void*,int,int,MPI_Offset* const*,MPI_Offset* const*,const void*,MPI_Offset,MPI_Datatype,int*,int);
+    int (*iget_varn)(void*,int,int,int,MPI_Offset* const*,MPI_Offset* const*,void*,MPI_Offset,MPI_Datatype,int*,int);
+    int (*iput_varn)(void*,int,int,int,MPI_Offset* const*,MPI_Offset* const*,const void*,MPI_Offset,MPI_Datatype,int*,int);
+    int (*bput_varn)(void*,int,int,int,MPI_Offset* const*,MPI_Offset* const*,const void*,MPI_Offset,MPI_Datatype,int*,int);
 
     int (*buffer_attach)(void*,MPI_Offset);
     int (*buffer_detach)(void*);
@@ -117,6 +117,7 @@ struct PNC_driver {
 typedef struct PNC_driver PNC_driver;
 
 #define PNC_VARS_CHUNK 64
+#define PNC_BLOCKS_CHUNK 64
 
 struct PNC_var {
     int         ndims;
@@ -125,6 +126,16 @@ struct PNC_var {
     MPI_Offset *shape;    /* [ndims] */
 };
 typedef struct PNC_var PNC_var;
+
+
+struct PNC_block {
+    int         ndims;
+    int         nvars;       /* number of variables defined */
+    struct PNC_var    *vars;        /* array of variable objects */
+    int                unlimdimid;  /* dim ID of NC_UNLIMITED */
+    int                nrec_vars;   /* number of record variables */
+};
+typedef struct PNC_block PNC_block;
 
 /* one dispatcher object per file: containing info independent from drivers,
  * and can be used for sanity checks, operations need not involve drivers
@@ -141,6 +152,7 @@ struct PNC {
     int                nblocks;       /* number of blocks */
     int                nrec_vars;   /* number of record variables */
     struct PNC_var    *vars;        /* array of variable objects */
+    struct PNC_block  *blocks;      /* array of block objects */
     void              *ncp;         /* pointer to driver internal object */
     struct PNC_driver *driver;
 };

@@ -554,6 +554,7 @@ define(`GETPUT_API',dnl
  */
 int
 ncmpio_$1_var(void             *ncdp,
+              int               blkid,
               int               varid,
               const MPI_Offset *start,
               const MPI_Offset *count,
@@ -567,7 +568,9 @@ ncmpio_$1_var(void             *ncdp,
 {
     NC     *ncp=(NC*)ncdp;
     NC_var *varp=NULL;
-
+    NC_block *local_block;
+    blkid = ncp->blocks.globalids[blkid];
+    local_block = ncp->blocks.value[blkid];
     /* sanity check has been done at dispatchers */
 
     if (fIsSet(reqMode, NC_REQ_ZERO) && fIsSet(reqMode, NC_REQ_COLL))
@@ -576,7 +579,7 @@ ncmpio_$1_var(void             *ncdp,
 
     /* obtain NC_var object pointer, varp. Note sanity check for ncdp and
      * varid has been done in dispatchers */
-    varp = ncp->vars.value[varid];
+    varp = local_block->vars.value[varid];
 
 #ifdef ENABLE_SUBFILING
     /* call a separate routine if variable is stored in subfiles */
