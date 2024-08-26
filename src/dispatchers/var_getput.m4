@@ -548,12 +548,12 @@ err_check:
     if (isScalar) {
         MPI_Offset start[1]={0}, count[1]={1};
         /* calling the subroutine that implements `$1'_var1 */
-        status = pncp->driver->`$1'_var(pncp->ncp, varid, start, count, NULL,
+        status = pncp->driver->`$1'_var(pncp->ncp, blkid, varid, start, count, NULL,
                                         NULL, buf, FLEX_ARG($2), reqMode);
     }
     else {
         /* calling the subroutine that implements NAPINAME($1,$2,$3)() */
-        status = pncp->driver->`$1'_varn(pncp->ncp, varid, num, starts, counts,
+        status = pncp->driver->`$1'_varn(pncp->ncp, blkid, varid, num, starts, counts,
                                          buf, FLEX_ARG($2), reqMode);
     }
     return ifelse(`$3',`',`status;',`(err != NC_NOERR) ? err : status; /* first error encountered */')
@@ -676,7 +676,7 @@ MAPINAME($1,$2,$3,$4)(int                ncid,
         ifelse(`$2',`s',`if (strides != NULL) stride = strides[i];',
                `$2',`m',`if (strides != NULL) stride = strides[i];
         if (imaps != NULL) imap = imaps[i];')
-        err = pncp->driver->i`$1'_var(pncp->ncp, varids[i], start, count,
+        err = pncp->driver->i`$1'_var(pncp->ncp, -1, varids[i], start, count,
                                       stride, imap, bufs[i],
                                       ifelse(`$3',`',`bufcounts[i],buftypes[i]',
                                                      `-1, ITYPE2MPI($3)'),

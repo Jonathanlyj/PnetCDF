@@ -520,6 +520,7 @@ define(`VARN',dnl
 /*----< ncmpio_$1_varn() >----------------------------------------------------*/
 int
 ncmpio_$1_varn(void               *ncdp,
+               int                blkid,        
                int                 varid,
                int                 num,
                MPI_Offset* const  *starts, /* cannot be NULL */
@@ -540,7 +541,7 @@ ncmpio_$1_varn(void               *ncdp,
 
     if (fIsSet(reqMode, NC_REQ_ZERO)) return NC_NOERR;
 
-    return igetput_varn(ncp, ncp->vars.value[varid], num, starts, counts,
+    return igetput_varn(ncp, ncp->blocks.value[blkid]->vars.value[varid], num, starts, counts,
                         (void*)buf, bufcount, buftype, reqid, reqMode);
 }
 ')dnl

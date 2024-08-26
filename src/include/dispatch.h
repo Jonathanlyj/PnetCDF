@@ -94,7 +94,7 @@ struct PNC_driver {
     int (*get_var)(void*,int,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,void*,MPI_Offset,MPI_Datatype,int);
     int (*put_var)(void*,int,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const void*,MPI_Offset,MPI_Datatype,int);
 
-    int (*get_varn)(void*,int,int,MPI_Offset* const*,MPI_Offset* const*,void*,MPI_Offset,MPI_Datatype,int);
+    int (*get_varn)(void*,int,int,int,MPI_Offset* const*,MPI_Offset* const*,void*,MPI_Offset,MPI_Datatype,int);
     int (*put_varn)(void*,int,int,int,MPI_Offset* const*,MPI_Offset* const*,const void*,MPI_Offset,MPI_Datatype,int);
 
     int (*get_vard)(void*,int,int,MPI_Datatype,void*,MPI_Offset,MPI_Datatype,int);

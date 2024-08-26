@@ -36,6 +36,7 @@ define(`VARN',dnl
 /*----< ncmpio_$1_varn() >--------------------------------------------------*/
 int
 ncmpio_$1_varn(void              *ncdp,
+               int                blkid,
                int                varid,
                int                num,
                MPI_Offset* const *starts,
@@ -48,7 +49,7 @@ ncmpio_$1_varn(void              *ncdp,
     int reqid=NC_REQ_NULL, err=NC_NOERR, status;
 
     if (!fIsSet(reqMode, NC_REQ_ZERO)) {
-        err = ncmpio_i`$1'_varn(ncdp, varid, num, starts, counts, buf,
+        err = ncmpio_i`$1'_varn(ncdp, blkid, varid, num, starts, counts, buf,
                                 bufcount, buftype, &reqid, reqMode);
         if (err != NC_NOERR && fIsSet(reqMode, NC_REQ_INDEP))
             return err;
