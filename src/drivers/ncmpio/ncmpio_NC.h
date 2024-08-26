@@ -292,6 +292,7 @@ typedef struct NC_block{
     int          modified; /* 1 if the block has been modified */
     char         *name;    /* name of the variable */
     MPI_Offset   xsz;      /* size of the block */
+    MPI_Offset   block_var_len;
     MPI_Offset   begin;      /* size of the block */
     NC_dimarray   dims;    /* dimensions defined */
     NC_vararray   vars;    /* variables defined */

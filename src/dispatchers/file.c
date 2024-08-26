@@ -527,6 +527,8 @@ ncmpi_create(MPI_Comm    comm,
     pncp->flag       = NC_MODE_DEF | NC_MODE_CREATE;
     pncp->ncp        = ncp;
     pncp->format     = format;
+    pncp->nblocks    = 0;
+    pncp->blocks = NULL;
 
     if (safe_mode)          pncp->flag |= NC_MODE_SAFE;
     if (!relax_coord_bound) pncp->flag |= NC_MODE_STRICT_COORD_BOUND;
