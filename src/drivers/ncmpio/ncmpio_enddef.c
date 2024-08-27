@@ -832,9 +832,11 @@ write_NC(NC *ncp)
             remain  -= bufCount;
         }
         NCI_Free(buf);
+
     }
     else if (fIsSet(ncp->flags, NC_HCOLL)) {
         /* other processes participate the collective call */
+
         for (i=0; i<ntimes; i++)
             TRACE_IO(MPI_File_write_at_all)(ncp->collective_fh, 0, NULL,
                                             0, MPI_BYTE, &mpistatus);
@@ -845,8 +847,11 @@ write_NC(NC *ncp)
     //Create viewtype and datatype to write (multiple) blocks with one MPI_I/O call
     int num_blocks_w = 0;
     for (int i = 0; i < ncp->blocks.ndefined; i++){
-        if (ncp->blocks.value[i]->modified) num_blocks_w++;
+
+        if (ncp->blocks.value[i]->modified)
+            num_blocks_w++;
     }
+
     if (num_blocks_w > 0){
         MPI_Datatype memtype;
         MPI_Aint *memdisps = (MPI_Aint*)NCI_Malloc(num_blocks_w * sizeof(MPI_Aint));
@@ -864,14 +869,13 @@ write_NC(NC *ncp)
                 status = ncmpio_local_hdr_put_NC(ncp, local_bufs[j], i);
                 if (status != NC_NOERR) /* a fatal error */
                     goto fn_exit;
-                if (rank == 1) printf("\nncp->blocks.value[i]->begin: %lld", ncp->blocks.value[i]->begin);
                 filedisps[j] = ncp->blocks.value[i]->begin;
                 if (j > 0) memdisps[j] = local_bufs[j] - local_bufs[0];
                 j++;
             }
         }
-        for (int i = 0; i < ncp->blocks.ndefined; i++){
-            printf("\nrank %d, blocklens[%d]: %d, filedisps[%d]: %lld\n", rank, i, blocklens[i], i, filedisps[i]);
+        for (int i = 0; i < num_blocks_w; i++){
+            printf("\nrank %d, blocklens[%d]: %d, filedisps[%d]: %lld", rank, i, blocklens[i], i, filedisps[i]);
         }   
         MPI_Type_create_hindexed(num_blocks_w, blocklens, memdisps, MPI_BYTE, &memtype);
         MPI_Type_commit(&memtype);
@@ -893,13 +897,19 @@ write_NC(NC *ncp)
         MPI_Type_free(&memtype);
         for (int i = 0; i < num_blocks_w; i++) NCI_Free(local_bufs[i]);
         NCI_Free(local_bufs);
-        //set filefiew back to original view
-        // TRACE_IO(MPI_File_set_view)(ncp->collective_fh, 0, MPI_BYTE, MPI_BYTE, "native", MPI_INFO_NULL);
-        
-    }  else if (fIsSet(ncp->flags, NC_HCOLL)) {
+    } else {
         /* other processes participate the collective call */
-        TRACE_IO(MPI_File_write_at_all_c)(ncp->collective_fh, 0, NULL, 0, MPI_BYTE, &mpistatus);
+        MPI_Datatype emptytype;
+        MPI_Type_contiguous(0, MPI_BYTE, &emptytype);
+        MPI_Type_commit(&emptytype);
+        TRACE_IO(MPI_File_set_view)(ncp->collective_fh, 0, MPI_BYTE, emptytype, "native", MPI_INFO_NULL);
+        MPI_Type_free(&emptytype);
+        if (fIsSet(ncp->flags, NC_HCOLL))
+            TRACE_IO(MPI_File_write_at_all_c)(ncp->collective_fh, 0, NULL, 0, MPI_BYTE, &mpistatus);
     }
+        
+        
+    
 
 
 
