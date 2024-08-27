@@ -90,6 +90,7 @@ ncmpio_def_block(void       *ncdp,    /* IN:  NC object */
     ncp->blocks.value[blkid]->vars.nameT = NULL;
     ncp->blocks.value[blkid]->vars.hash_size = ncp->hash_size_var;
     ncp->blocks.value[blkid]->block_var_len = 0;
+    ncp->blocks.value[blkid]->block_recvar_len = 0;
 
 
 #ifndef SEARCH_NAME_LINEARLY

@@ -536,7 +536,7 @@ NC_begins(NC *ncp)
     //META: get the total header size
 
     // ncp->blocks.value[0]->xsz = ncmpio_local_hdr_len_NC(ncp->blocks.value[0]);
-    if (rank == 1) printf("\nrank %d, pncp->ncp->global_xsz: %lld", rank, ncp->global_xsz);
+    // if (rank == 1) printf("\nrank %d, pncp->ncp->global_xsz: %lld", rank, ncp->global_xsz);
 
     
     if (ncp->safe_mode) { /* this consistency check is redundant as metadata is
@@ -601,7 +601,7 @@ NC_begins(NC *ncp)
     end_var = ncp->begin_var;
 
     for (int j=0; j<ncp->blocks.ndefined; j++){
-        if (rank == 1) printf("\n-1 rank %d, j: %lld", rank, j);
+        // if (rank == 1) printf("\n-1 rank %d, j: %lld", rank, j);
         local_block = ncp->blocks.value[j];
         if (local_block->modified){
             for (int i=0; i<ncp->blocks.value[j]->vars.ndefined; i++) {
@@ -777,9 +777,9 @@ write_NC(NC *ncp)
         /* Do not write padding area (between ncp->xsz and ncp->begin_var) */
         buf = (char*)NCI_Malloc(global_header_wlen);
 #endif
-        /* copy the entire local header object to buf */
+        /* copy the entire global header object to buf */
         status = ncmpio_global_hdr_put_NC(ncp, buf);
-        print_buffer_ascii(buf, global_header_wlen);
+        // print_buffer_ascii(buf, global_header_wlen);
 
         if (status != NC_NOERR) /* a fatal error */
             goto fn_exit;
@@ -1572,7 +1572,7 @@ ncmpio__enddef(void       *ncdp,
     MPI_Comm_rank(ncp->comm, &rank);
     MPI_Comm_size(ncp->comm, &nproc);
 
-    if (rank == 1) printf("\nbefore comm rank %d: ncp->blocks.value[0]->vars.ndefined: %d\n", rank, ncp->blocks.value[0]->vars.ndefined);
+    // if (rank == 1) printf("\nbefore comm rank %d: ncp->blocks.value[0]->vars.ndefined: %d\n", rank, ncp->blocks.value[0]->vars.ndefined);
 
 
     //STEP1: communicate number of new blocks across all processes
@@ -1600,7 +1600,7 @@ ncmpio__enddef(void       *ncdp,
   // Communicate the sizes of the header structure for each process
     MPI_Offset* all_collection_sizes = (MPI_Offset*) NCI_Malloc(nproc * sizeof(MPI_Offset));
     TRACE_COMM(MPI_Allgather)(&local_buff_size, 1, MPI_OFFSET, all_collection_sizes, 1, MPI_OFFSET, ncp->comm);
-    if (rank == 1) printf("\nbefore comm rank %d: ncp->blocks.value[0]->vars.ndefined: %d\n", rank, ncp->blocks.value[0]->vars.ndefined);
+    // if (rank == 1) printf("\nbefore comm rank %d: ncp->blocks.value[0]->vars.ndefined: %d\n", rank, ncp->blocks.value[0]->vars.ndefined);
 
     // Calculate displacements for the second phase
     int* recv_displs = (int*) NCI_Malloc(nproc * sizeof(int));
@@ -1617,7 +1617,7 @@ ncmpio__enddef(void       *ncdp,
     for (int i = 0; i < nproc; ++i) {
         recvcounts[i] = (int)all_collection_sizes[i];
     }
-    if (rank == 1) printf("\nbefore comm rank %d: ncp->blocks.value[0]->vars.ndefined: %d\n", rank, ncp->blocks.value[0]->vars.ndefined);
+    // if (rank == 1) printf("\nbefore comm rank %d: ncp->blocks.value[0]->vars.ndefined: %d\n", rank, ncp->blocks.value[0]->vars.ndefined);
 
     TRACE_COMM(MPI_Allgatherv)(local_buff, local_buff_size, MPI_BYTE, all_collections_buffer, recvcounts, recv_displs, MPI_BYTE, ncp->comm);
 
@@ -1631,7 +1631,7 @@ ncmpio__enddef(void       *ncdp,
     example: rank0 ABCDE|FG rank1 ABCDE|H  rank2 ABCDE|I ->   ABCDE|FGHI
     after merging rank0 globalids should be 01234|5678 rank1 should be 01234|7568
     */
-    if (rank == 1) printf("\nbefore comm rank %d: ncp->blocks.value[0]->vars.ndefined: %d\n", rank, ncp->blocks.value[0]->vars.ndefined);
+    // if (rank == 1) printf("\nbefore comm rank %d: ncp->blocks.value[0]->vars.ndefined: %d\n", rank, ncp->blocks.value[0]->vars.ndefined);
     for(int i=ncp->blocks.ndefined; i<new_total;i++){
         ncp->blocks.value[i] = (NC_block*) NCI_Malloc(sizeof(NC_block));
     }
@@ -1657,11 +1657,11 @@ ncmpio__enddef(void       *ncdp,
         ncp->blocks.localids[ncp->blocks.globalids[i]] = i;
     }
 
-    if (rank == 1) printf("\nBefore deserialize_bufferinfo_array");
+
     //STEP4: Deseralize buffer to global block array (only name and block size info)
     err = deserialize_bufferinfo_array(ncp, all_collections_buffer, recv_displs, new_block_offsets, total_recv_size, nproc, rank);
-    if (rank == 1) printf("\nbefore comm rank %d: ncp->blocks.value[0]->vars.ndefined: %d\n", rank, ncp->blocks.value[0]->vars.ndefined);
-    if (rank == 1) printf("\nAfter deserialize_bufferinfo_array");
+    // if (rank == 1) printf("\nbefore comm rank %d: ncp->blocks.value[0]->vars.ndefined: %d\n", rank, ncp->blocks.value[0]->vars.ndefined);
+
     ncp->blocks.ndefined = new_total;
     // printf("\nlast:ncp->blocks.value[0]->name: %s\n", ncp->blocks.value[0]->name);
     // printf("\nlast:ncp->blocks.value[0]->dims.value[0]->name: %s\n", ncp->blocks.value[0]->dims.value[0]->name);
@@ -1740,7 +1740,7 @@ ncmpio__enddef(void       *ncdp,
     /* first sync header objects in memory across all processes, and then root
      * writes the header to file. Note safe_mode error check will be done in
      * write_NC() */
-    if (rank == 1) printf("\nbefore write NC ncp->global_xsz: %lld", ncp->global_xsz);
+    // if (rank == 1) printf("\nbefore write NC ncp->global_xsz: %lld", ncp->global_xsz);
     status = write_NC(ncp);
 
     /* we should continue to exit define mode, even if header is inconsistent

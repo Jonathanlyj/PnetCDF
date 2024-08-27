@@ -482,21 +482,35 @@ hdr_put_NC_blockarray(bufferinfo        *pbp,
 
         /* copy name OFFSET block_size*/
     /* copy [dimid ...] */
-    for (i=0; i<ncp->blocks.ndefined; i++) {
+
+    for (int i=0; i<ncp->blocks.ndefined; i++) {
+        // copy block name
         status = hdr_put_NC_name(pbp, ncp->blocks.value[i]->name);
-        printf("ncp->blocks.value[%d]->begin %u\n", i, ncp->blocks.value[i]->begin);
+        // copy block offset
         if (pbp->version < 5)
 
             status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncp->blocks.value[i]->begin);
         else
             status = ncmpix_put_uint64((void**)(&pbp->pos), (uint64)ncp->blocks.value[i]->begin);
-        printf("ncp->blocks.value[i]->xsz %u\n", ncp->blocks.value[i]->xsz);
+        //copy block size
         if (pbp->version < 5)
             status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncp->blocks.value[i]->xsz);
         else
             status = ncmpix_put_uint64((void**)(&pbp->pos), (uint64)ncp->blocks.value[i]->xsz);
+
+        //copy block var_len
+        if (pbp->version < 5)
+            status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncp->blocks.value[i]->block_var_len);
+        else
+            status = ncmpix_put_uint64((void**)(&pbp->pos), (uint64)ncp->blocks.value[i]->block_var_len);
+
+        if (pbp->version < 5)
+            status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncp->blocks.value[i]->block_recvar_len);
+        else
+            status = ncmpix_put_uint64((void**)(&pbp->pos), (uint64)ncp->blocks.value[i]->block_recvar_len);
         if (status != NC_NOERR) return status;
         }
+
     }
 
     return NC_NOERR;
