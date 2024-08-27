@@ -289,13 +289,15 @@ typedef struct NC_vararray {
 
 typedef struct NC_block{
     size_t       name_len; /* strlen(name) for faster string compare */
-    int          modified; /* 1 if the block has been modified */
+    int          modified; /* 1 if the block has been modified by this process (means the process knows its content) */
     char         *name;    /* name of the variable */
-    MPI_Offset   xsz;      /* size of the block */
-    MPI_Offset   block_var_len;
+    MPI_Offset   xsz;      /* size of the block header*/
+    MPI_Offset   block_var_len; /* size of the block fix-sized var size*/
+    MPI_Offset   block_recvar_len; /* size of the block record var size*/
     MPI_Offset   begin;      /* size of the block */
     NC_dimarray   dims;    /* dimensions defined */
     NC_vararray   vars;    /* variables defined */
+    int          numrecs;
 } NC_block;
 
 //META: NC_blockarray parsed from local header block
@@ -445,7 +447,7 @@ struct NC {
                                   of first record variable. This value is also
                                   the size of file header extent. */
     MPI_Offset    begin_rec;   /* file offset of the first 'record' */
-
+    //META: following 2 properties now refers to the sum of their sub-sizes in each block: block_recvar_len, numrecs
     MPI_Offset    recsize;   /* length of 'record': sum of single record sizes
                                 of all the record variables */
     MPI_Offset    numrecs;   /* number of 'records' allocated */

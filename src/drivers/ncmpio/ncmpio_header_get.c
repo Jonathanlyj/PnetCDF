@@ -1325,6 +1325,8 @@ hdr_len_NC_blockinfo(const NC_block *blockp, int sizeof_NON_NEG, int sizeof_off_
     xlen = sizeof_NON_NEG + _RNDUP(blockp->name_len, X_ALIGN); //name
     xlen += sizeof_off_t; // OFFSET
     xlen += sizeof_NON_NEG; // bsize
+    xlen += sizeof_NON_NEG; // size of block_var_len
+    xlen += sizeof_NON_NEG; // size of block_recvar_len
     return xlen;
 }
 /*META*/
