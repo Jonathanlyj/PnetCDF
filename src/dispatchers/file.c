@@ -757,6 +757,7 @@ ncmpi_open(MPI_Comm    comm,
 
     /* calling the driver's open subroutine */
     err = driver->open(pncp->comm, path, omode, *ncidp, combined_info, &ncp);
+
     if (status == NC_NOERR) status = err;
     if (combined_info != MPI_INFO_NULL) MPI_Info_free(&combined_info);
     if (status != NC_NOERR && status != NC_EMULTIDEFINE_OMODE &&
@@ -785,8 +786,8 @@ ncmpi_open(MPI_Comm    comm,
     strcpy(pncp->path, path);
     pncp->mode       = omode;
     pncp->driver     = driver;
-    pncp->ndims      = 0;
-    pncp->unlimdimid = -1;
+    pncp->nblocks      = 0;
+    // pncp->unlimdimid = -1;
     pncp->nvars      = 0;
     pncp->nrec_vars  = 0;
     pncp->vars       = NULL;
@@ -798,9 +799,11 @@ ncmpi_open(MPI_Comm    comm,
     if (safe_mode)                pncp->flag |= NC_MODE_SAFE;
     if (!relax_coord_bound)       pncp->flag |= NC_MODE_STRICT_COORD_BOUND;
 
-    /* inquire number of dimensions, variables defined and rec dim ID */
-    err = driver->inq(pncp->ncp, &pncp->ndims, &pncp->nvars, NULL,
-                      &pncp->unlimdimid);
+    // /* inquire number of dimensions, variables defined and rec dim ID */
+    // err = driver->inq(pncp->ncp, &pncp->ndims, &pncp->nvars, NULL,
+    //                   &pncp->unlimdimid);
+    /* META: inquire number of blocks */
+    err = driver->inq(pncp->ncp, &pncp->nblocks, NULL);
     if (err != NC_NOERR) goto fn_exit;
 
     if (pncp->nvars == 0) return status; /* no variable defined in the file */
@@ -809,15 +812,23 @@ ncmpi_open(MPI_Comm    comm,
      * sanity check is done at the dispatcher layer
      */
 
+
     /* allocate chunk size for pncp->vars[] */
-    nalloc = _RNDUP(pncp->nvars, PNC_VARS_CHUNK);
-    pncp->vars = NCI_Malloc(nalloc * sizeof(PNC_var));
-    if (pncp->vars == NULL) {
+    nalloc = _RNDUP(pncp->nblocks, PNC_BLOCKS_CHUNK);
+    pncp->blocks = NCI_Malloc(nalloc * sizeof(PNC_block));
+    if (pncp->blocks == NULL) {
         DEBUG_ASSIGN_ERROR(err, NC_ENOMEM)
         goto fn_exit;
     }
+    // /* allocate chunk size for pncp->vars[] */
+    // nalloc = _RNDUP(pncp->nvars, PNC_VARS_CHUNK);
+    // pncp->vars = NCI_Malloc(nalloc * sizeof(PNC_var));
+    // if (pncp->vars == NULL) {
+    //     DEBUG_ASSIGN_ERROR(err, NC_ENOMEM)
+    //     goto fn_exit;
+    // }
 
-    dimids = DIMIDS;
+    // dimids = DIMIDS;
     //META: cannot construct pncp->vars becasue block is not read yet.
     /* construct array of PNC_var for all variables */
     // for (i=0; i<pncp->nvars; i++) {
@@ -859,7 +870,7 @@ ncmpi_open(MPI_Comm    comm,
     //     }
     //     NCI_Free(pncp->vars);
     // }
-    if (dimids != DIMIDS) NCI_Free(dimids);
+    // if (dimids != DIMIDS) NCI_Free(dimids);
 
 fn_exit:
     if (err != NC_NOERR) {
@@ -1395,10 +1406,8 @@ ncmpi_inq_version(int ncid, int *nc_mode)
 /*----< ncmpi_inq() >--------------------------------------------------------*/
 int
 ncmpi_inq(int  ncid,
-          int *ndimsp,
-          int *nvarsp,
-          int *nattsp,
-          int *xtendimp)
+          int *nblksp,
+          int *nattsp)
 {
     int err;
     PNC *pncp;
@@ -1408,40 +1417,40 @@ ncmpi_inq(int  ncid,
     if (err != NC_NOERR) return err;
 
     /* calling the subroutine that implements ncmpi_inq() */
-    return pncp->driver->inq(pncp->ncp, ndimsp, nvarsp, nattsp, xtendimp);
+    return pncp->driver->inq(pncp->ncp, nblksp, nattsp);
 }
 
-/*----< ncmpi_inq_ndims() >--------------------------------------------------*/
-int
-ncmpi_inq_ndims(int  ncid,
-                int *ndimsp)
-{
-    return ncmpi_inq(ncid, ndimsp, NULL, NULL, NULL);
-}
+// /*----< ncmpi_inq_ndims() >--------------------------------------------------*/
+// int
+// ncmpi_inq_ndims(int  ncid,
+//                 int *ndimsp)
+// {
+//     return ncmpi_inq(ncid, ndimsp, NULL, NULL, NULL);
+// }
 
-/*----< ncmpi_inq_nvars() >--------------------------------------------------*/
-int
-ncmpi_inq_nvars(int  ncid,
-                int *nvarsp)
-{
-    return ncmpi_inq(ncid, NULL, nvarsp, NULL, NULL);
-}
+// /*----< ncmpi_inq_nvars() >--------------------------------------------------*/
+// int
+// ncmpi_inq_nvars(int  ncid,
+//                 int *nvarsp)
+// {
+//     return ncmpi_inq(ncid, NULL, nvarsp, NULL, NULL);
+// }
 
 /*----< ncmpi_inq_natts() >--------------------------------------------------*/
 int
 ncmpi_inq_natts(int  ncid,
                 int *nattsp)
 {
-    return ncmpi_inq(ncid, NULL, NULL, nattsp, NULL);
+    return ncmpi_inq(ncid, NULL, nattsp);
 }
 
 /*----< ncmpi_inq_unlimdim() >-----------------------------------------------*/
-int
-ncmpi_inq_unlimdim(int  ncid,
-                   int *unlimdimidp)
-{
-    return ncmpi_inq(ncid, NULL, NULL, NULL, unlimdimidp);
-}
+// int
+// ncmpi_inq_unlimdim(int  ncid,
+//                    int *unlimdimidp)
+// {
+//     return ncmpi_inq(ncid, NULL, NULL, NULL, unlimdimidp);
+// }
 
 /*----< ncmpi_inq_path() >---------------------------------------------------*/
 /* Get the file pathname which was used to open/create the ncid's file.

@@ -303,23 +303,38 @@ ncmpio_abort(void *ncdp)
     return status;
 }
 
-/*----< ncmpio_inq() >-------------------------------------------------------*/
+/*----< META: ncmpio_inq() >-------------------------------------------------------*/
 int
 ncmpio_inq(void *ncdp,
-           int  *ndimsp,
-           int  *nvarsp,
-           int  *nattsp,
-           int  *xtendimp)
+           int  *nblksp,
+           int  *nattsp)
 {
     NC *ncp = (NC*)ncdp;
 
-    if (ndimsp   != NULL) *ndimsp   = ncp->dims.ndefined;
-    if (nvarsp   != NULL) *nvarsp   = ncp->vars.ndefined;
+    if (nblksp   != NULL) *nblksp   = ncp->blocks.ndefined;
     if (nattsp   != NULL) *nattsp   = ncp->attrs.ndefined;
-    if (xtendimp != NULL) *xtendimp = ncp->dims.unlimited_id;
+
 
     return NC_NOERR;
 }
+
+// /*----< ncmpio_inq() >-------------------------------------------------------*/
+// int
+// ncmpio_inq(void *ncdp,
+//            int  *ndimsp,
+//            int  *nvarsp,
+//            int  *nattsp,
+//            int  *xtendimp)
+// {
+//     NC *ncp = (NC*)ncdp;
+
+//     if (ndimsp   != NULL) *ndimsp   = ncp->dims.ndefined;
+//     if (nvarsp   != NULL) *nvarsp   = ncp->vars.ndefined;
+//     if (nattsp   != NULL) *nattsp   = ncp->attrs.ndefined;
+//     if (xtendimp != NULL) *xtendimp = ncp->dims.unlimited_id;
+
+//     return NC_NOERR;
+// }
 
 /*----< ncmpio_inq_misc() >--------------------------------------------------*/
 /* This is an independent subroutine. */

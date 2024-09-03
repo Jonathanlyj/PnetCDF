@@ -45,7 +45,7 @@ extern int
 ncmpio_fill_var_rec(void *ncdp, int blkid, int varid, MPI_Offset recno);
 
 extern int
-ncmpio_inq(void *ncdp, int *ndimsp, int *nvarsp, int *nattsp, int *xtendimp);
+ncmpio_inq(void *ncdp, int *nblksp, int *nattsp);
 
 extern int
 ncmpio_inq_misc(void *ncdp, int *pathlen, char *path, int *num_fix_varsp,

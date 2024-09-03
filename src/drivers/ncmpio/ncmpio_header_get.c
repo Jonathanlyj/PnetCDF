@@ -1306,6 +1306,135 @@ ncmpio_hdr_len_NC(const NC *ncp)
     return xlen; /* return the header size (not yet aligned) */
 }
 
+/*META----< hdr_get_NC_blockarray() >----------------------------------------------*/
+static int
+hdr_get_NC_blockarray(bufferinfo *gbp, NC *ncp)
+{
+    int i, err, status=NC_NOERR, ndefined=0;
+    size_t alloc_size;
+    NC_tag tag = NC_UNSPECIFIED;
+
+    assert(gbp != NULL && gbp->pos != NULL);
+
+
+    // Read the initial identifier (NC_UNSPECIFIED or NC_BLOCK)
+
+    err = hdr_get_NC_tag(gbp, &tag);
+    if (status != NC_NOERR) return err;
+    /* read nelems (number of variables) from gbp buffer */
+    if (gbp->version < 5) { /* nelems is <non-negative INT> */
+        uint tmp;
+        err = hdr_get_uint32(gbp, &tmp);
+        if (err != NC_NOERR) return err;
+        /* cannot be more than max number of attributes */
+        if (tmp > NC_MAX_VARS) DEBUG_RETURN_ERROR(NC_EMAXVARS)
+        ndefined = (int)tmp;
+    }
+    else { /* nelems is <non-negative INT64> */
+        uint64 tmp;
+        err = hdr_get_uint64(gbp, &tmp);
+        if (err != NC_NOERR) return err;
+        /* cannot be more than max number of attributes */
+        if (tmp > NC_MAX_VARS) DEBUG_RETURN_ERROR(NC_EMAXVARS)
+        ndefined = (int)tmp;
+    }
+
+    /* Now ndefined is in between 0 and NC_MAX_VARS */
+    ncp->blocks.ndefined = ndefined;
+    if (ndefined == 0) return NC_NOERR;
+
+    /* Now, ndefined > 0, tag must be NC_VARIABLE */
+    if (tag != NC_BLOCK) {
+#ifdef PNETCDF_DEBUG
+        fprintf(stderr,"Error in file %s func %s line %d: NetCDF header corrupted, expecting tag NC_VARIABLE but got %d\n",__FILE__,__func__,__LINE__,tag);
+#endif
+        DEBUG_RETURN_ERROR(NC_ENOTNC)
+    }
+    alloc_size = _RNDUP(ndefined, PNC_ARRAY_GROWBY);
+    ncp->blocks.value = (NC_block**) NCI_Calloc(alloc_size, sizeof(NC_block*));
+    /* get [block_info ...] */
+    for (i = 0; i < ndefined; i++) {
+        ncp->blocks.value[i] = NULL;
+        size_t name_len;
+        char *name;
+        NC_block *blockp;
+        blockp = (NC_block *)NCI_Malloc(sizeof(NC_block));
+        if (blockp == NULL) return NC_ENOMEM;
+
+        // Read block name
+        err = hdr_get_NC_name(gbp, &name, &name_len);
+        if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
+        if (status != NC_NOERR) return status;
+        else if (err != NC_NOERR) return err;
+        blockp->name = name;
+        blockp->name_len = name_len;
+
+        // Read block offset
+        if (gbp->version < 5) {
+            uint offset;
+            status = ncmpix_get_uint32((const void**)(&gbp->pos), &offset);
+            blockp->begin = (off_t)offset;
+        } else {
+            uint64 offset64;
+            status = ncmpix_get_uint64((const void**)(&gbp->pos), &offset64);
+            blockp->begin = (off_t)offset64;
+        }
+        if (status != NC_NOERR) return status;
+
+        // Read block size
+        if (gbp->version < 5) {
+            uint block_size;
+            status = ncmpix_get_uint32((const void**)(&gbp->pos), &block_size);
+            blockp->xsz = (size_t)block_size;
+        } else {
+            uint64 block_size64;
+            status = ncmpix_get_uint64((const void**)(&gbp->pos), &block_size64);
+            blockp->xsz = (size_t)block_size64;
+        }
+        if (status != NC_NOERR) return status;
+
+        // Read block var_len
+        if (gbp->version < 5) {
+            uint block_var_len;
+            status = ncmpix_get_uint32((const void**)(&gbp->pos), &block_var_len);
+            blockp->block_var_len = (size_t)block_var_len;
+        } else {
+            uint64 block_var_len64;
+            status = ncmpix_get_uint64((const void**)(&gbp->pos), &block_var_len64);
+            blockp->block_var_len = (size_t)block_var_len64;
+        }
+        if (status != NC_NOERR) return status;
+
+        // Read block recvar_len
+        if (gbp->version < 5) {
+            uint block_recvar_len;
+            status = ncmpix_get_uint32((const void**)(&gbp->pos), &block_recvar_len);
+            blockp->block_recvar_len = (size_t)block_recvar_len;
+        } else {
+            uint64 block_recvar_len64;
+            status = ncmpix_get_uint64((const void**)(&gbp->pos), &block_recvar_len64);
+            blockp->block_recvar_len = (size_t)block_recvar_len64;
+        }
+        if (status != NC_NOERR) return status;
+
+        blockp->dims.ndefined = 0;
+        blockp->dims.value = NULL;
+        blockp->dims.nameT = NULL;
+        blockp->dims.hash_size = ncp->hash_size_dim;
+        blockp->vars.ndefined = 0;
+        blockp->vars.value = NULL;
+        blockp->vars.nameT = NULL;
+        blockp->vars.hash_size = ncp->hash_size_var;
+        blockp->block_var_len = 0;
+        blockp->block_recvar_len = 0;
+        ncp->blocks.value[i] = blockp;
+    }
+    
+    return status;
+}
+
+
+
 /*META*/
 /*----< hdr_len_NC_block_offset_array() >------------------------------------------------*/
 MPI_Offset
@@ -1432,6 +1561,141 @@ ncmpio_block_hdr_len_NC(const NC *ncp, int block_index)
     xlen += hdr_len_NC_vararray(&ncp->blocks.value[block_index]->vars,   sizeof_NON_NEG, sizeof_off_t); /* var_list */
     return xlen; /* return the header size (not yet aligned) */
 }
+
+/*----< ncmpio_global_hdr_get_NC() >------------------------------------------------*/
+/*  CDF format specification
+    *  ...
+    *  global_header     = magic  numrecs  gatt_list block_begins
+    *  ...
+    */
+int
+ncmpio_global_hdr_get_NC(NC *ncp)
+{
+    int i, err, status=NC_NOERR;
+    bufferinfo getbuf;
+    char magic[NC_MAGIC_LEN];
+
+    assert(ncp != NULL);
+
+    /* Initialize the get buffer that stores the header read from the file */
+    getbuf.comm          = ncp->comm;
+    getbuf.collective_fh = ncp->collective_fh;
+    getbuf.get_size      = 0;
+    getbuf.offset        = 0;   /* read from start of the file */
+    getbuf.safe_mode     = ncp->safe_mode;
+    getbuf.rw_mode       = (fIsSet(ncp->flags, NC_HCOLL)) ? 1 : 0;
+
+    /* CDF-5's minimum header size is 4 bytes more than CDF-1 and CDF-2's */
+    getbuf.chunk = _RNDUP( MAX(MIN_NC_XSZ+4, ncp->chunk), X_ALIGN );
+
+    getbuf.base = (char*) NCI_Malloc(getbuf.chunk);
+    getbuf.pos  = getbuf.base;
+    getbuf.end  = getbuf.base + getbuf.chunk;
+
+    /* Fetch the next header chunk. The chunk is 'gbp->chunk' bytes big */
+    err = hdr_fetch(&getbuf);
+    if (err != NC_NOERR) return err;
+
+    /* processing the header from getbuf, the get buffer */
+
+    /* First get the file format information, magic */
+    err = ncmpix_getn_text((const void **)(&getbuf.pos), NC_MAGIC_LEN, magic);
+    if (err != NC_NOERR) return err;
+
+    /* check if the first three bytes are 'C','D','F' */
+    if (memcmp(magic, "CDF", 3) != 0) {
+        /* check if is HDF5 file */
+        char signature[8], *hdf5_signature="\211HDF\r\n\032\n";
+        ncmpix_getn_text((const void **)(&getbuf.pos), 8, signature);
+        if (memcmp(signature, hdf5_signature, 8) == 0) {
+            DEBUG_ASSIGN_ERROR(err, NC_ENOTNC3)
+            if (ncp->safe_mode)
+                fprintf(stderr,"Error: file %s is HDF5 format\n",ncp->path);
+        }
+        else
+            DEBUG_ASSIGN_ERROR(err, NC_ENOTNC)
+        goto fn_exit;
+    }
+
+    /* check version number in last byte of magic */
+    if (magic[3] == 0x1) {
+        getbuf.version = ncp->format = 1;
+    } else if (magic[3] == 0x2) {
+        getbuf.version = ncp->format = 2;
+    } else if (magic[3] == 0x5) {
+        getbuf.version = ncp->format = 5;
+    } else {
+        NCI_Free(getbuf.base);
+        DEBUG_RETURN_ERROR(NC_ENOTNC) /* not a netCDF file */
+    }
+
+    /* get numrecs from getbuf into ncp */
+    if (getbuf.version < 5) {
+        uint tmp=0;
+        err = hdr_get_uint32(&getbuf, &tmp);
+        if (err != NC_NOERR) goto fn_exit;
+        ncp->numrecs = (MPI_Offset)tmp;
+    }
+    else {
+        uint64 tmp=0;
+        err = hdr_get_uint64(&getbuf, &tmp);
+        if (err != NC_NOERR) goto fn_exit;
+        ncp->numrecs = (MPI_Offset)tmp;
+    }
+
+    assert(getbuf.pos < getbuf.end);
+
+    // /* get dim_list from getbuf into ncp */
+    // err = hdr_get_NC_dimarray(&getbuf, &ncp->dims);
+    // if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
+    // else if (err != NC_NOERR) goto fn_exit;
+
+    /* get gatt_list from getbuf into ncp */
+    err = hdr_get_NC_attrarray(&getbuf, &ncp->attrs);
+    if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
+    else if (err != NC_NOERR) goto fn_exit;
+
+    // /* get var_list from getbuf into ncp */
+    // err = hdr_get_NC_vararray(&getbuf, &ncp->vars, ncp->dims.ndefined);
+    // if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
+    // else if (err != NC_NOERR) goto fn_exit;
+
+
+    // /* get block_list from getbuf into ncp */
+    err = hdr_get_NC_blockarray(&getbuf, ncp);
+    if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
+    else if (err != NC_NOERR) goto fn_exit;
+    /* get the un-aligned size occupied by the file header */
+    ncp->xsz = ncmpio_hdr_len_NC(ncp);
+
+    /* Recompute the shapes of all variables (shape, xsz, len)
+     * Sets ncp->begin_var to start of first variable.
+     * Sets ncp->begin_rec to start of first record variable.
+     */
+    err = compute_var_shape(ncp);
+    if (err != NC_NOERR) goto fn_exit;
+
+    /* update the total number of record variables --------------------------*/
+    ncp->vars.num_rec_vars = 0;
+    for (i=0; i<ncp->vars.ndefined; i++)
+        ncp->vars.num_rec_vars += IS_RECVAR(ncp->vars.value[i]);
+
+    /* Check whether variable sizes are legal for the given file format */
+    err = ncmpio_NC_check_vlens(ncp);
+    if (err != NC_NOERR) goto fn_exit;
+
+    /* Check whether variable begins are in an increasing order.
+     * Adding this check here is necessary for detecting corrupted metadata. */
+    err = ncmpio_NC_check_voffs(ncp);
+    if (err != NC_NOERR) goto fn_exit;
+
+fn_exit:
+    ncp->get_size += getbuf.get_size;
+    NCI_Free(getbuf.base);
+
+    return (err == NC_NOERR) ? status : err;
+}
+
 
 /*----< ncmpio_hdr_get_NC() >------------------------------------------------*/
 /*  CDF format specification
@@ -1569,5 +1833,6 @@ fn_exit:
 
     return (err == NC_NOERR) ? status : err;
 }
+
 
 

@@ -569,6 +569,9 @@ extern int
 ncmpio_global_hdr_put_NC(NC *ncp, void *buf);
 
 extern int
+ncmpio_global_hdr_get_NC(NC *ncp);
+
+extern int
 ncmpio_write_header(NC *ncp);
 
 /* Begin defined in ncmpio_sync.c -------------------------------------------*/

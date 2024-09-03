@@ -164,10 +164,9 @@ void
 ncmpio_free_NC_block(NC_block *ncap)
 {
     if (ncap == NULL) return;
-    
     NCI_Free(ncap->name);
-    ncmpio_free_NC_dimarray(&ncap->dims);
-    ncmpio_free_NC_vararray(&ncap->vars);
+    if (ncap->dims.ndefined > 0) ncmpio_free_NC_dimarray(&ncap->dims);
+    if (ncap->vars.ndefined > 0) ncmpio_free_NC_vararray(&ncap->vars);
 }
 
 /*----< ncmpio_free_NC_blockarray() >-----------------------------------------*/
