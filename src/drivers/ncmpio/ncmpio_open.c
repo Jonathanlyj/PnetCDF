@@ -182,14 +182,18 @@ ncmpio_open(MPI_Comm     comm,
         ncp->num_subfiles = 0;
 #endif
 
-// #ifndef SEARCH_NAME_LINEARLY
-//     /* initialize and populate name lookup tables ---------------------------*/
-//     ncmpio_hash_table_populate_NC_dim(&ncp->dims, ncp->hash_size_dim);
-//     ncmpio_hash_table_populate_NC_var(&ncp->vars, ncp->hash_size_var);
-//     ncmpio_hash_table_populate_NC_attr(ncp);
-//     for (i=0; i<ncp->vars.ndefined; i++)
-//         ncp->vars.value[i]->attrs.hash_size = ncp->hash_size_attr;
-// #endif
+#ifndef SEARCH_NAME_LINEARLY
+    /* initialize and populate name lookup tables ---------------------------*/
+    // ncmpio_hash_table_populate_NC_dim(&ncp->dims, ncp->hash_size_dim);
+    // ncmpio_hash_table_populate_NC_var(&ncp->vars, ncp->hash_size_var);
+    ncmpio_hash_table_populate_NC_block(&ncp->blocks, ncp->hash_size_var);//user var hash size for now
+    ncmpio_hash_table_populate_NC_attr(ncp);
+    // for (i=0; i<ncp->blocks.ndefined; i++)
+    //     ncp->blocks.value[i]->vars.hash_size = ncp->hash_size_var;
+    //     ncp->blocks.value[i]->dims.hash_size = ncp->hash_size_dim;
+    // for (i=0; i<ncp->vars.ndefined; i++)
+    //     ncp->vars.value[i]->attrs.hash_size = ncp->hash_size_attr;
+#endif
 
     *ncpp = (void*)ncp;
 

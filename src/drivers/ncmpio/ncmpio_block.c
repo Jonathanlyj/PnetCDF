@@ -148,12 +148,17 @@ ncmpio_inq_blkid(void       *ncdp,
     int err=NC_NOERR;
     char *nname=NULL; /* normalized name */
     NC *ncp=(NC*)ncdp;
+    int global_blkid;
+    
 
     /* create a normalized character string */
     err = ncmpii_utf8_normalize(name, &nname);
     if (err != NC_NOERR) return err;
 
-    err = NC_findblk(&ncp->blocks, nname, blkid);
+    err = NC_findblk(&ncp->blocks, nname, &global_blkid);
+    if (err == NC_NOERR) {
+        if (blkid != NULL) *blkid = ncp->blocks.localids[global_blkid];
+    }
     NCI_Free(nname);
 
     return err;

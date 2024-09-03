@@ -654,6 +654,10 @@ ncmpio_hash_table_populate_NC_var(NC_vararray *varsp, int hash_size);
 extern void
 ncmpio_hash_table_populate_NC_dim(NC_dimarray *dimsp, int hash_size);
 
+//META
+extern void
+ncmpio_hash_table_populate_NC_block(NC_blockarray *blocksp, int hash_size);
+
 extern void
 ncmpio_hash_table_populate_NC_attr(NC *ncp);
 
