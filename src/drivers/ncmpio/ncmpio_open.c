@@ -139,8 +139,6 @@ ncmpio_open(MPI_Comm     comm,
     // err = ncmpio_hdr_get_NC(ncp);
     /* META: read global header only from file into NC object pointed by ncp -------------------*/
     err = ncmpio_global_hdr_get_NC(ncp);
-
-
     if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
     else if (err != NC_NOERR) { /* fatal error */
         ncmpio_close_files(ncp, 0);

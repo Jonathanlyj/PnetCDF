@@ -77,6 +77,9 @@ extern int
 ncmpio_inq_blkid(void *ncdp, const char *name, int *dimidp);
 
 extern int
+ncmpio_inq_block(void *ncdp, int blkid, char *name, int *ndimsp, int *nvarsp, int *xtendimp);
+
+extern int
 ncmpio_inq_dim(void *ncdp, int blkid, int dimid, char *name, MPI_Offset *lengthp);
 
 extern int

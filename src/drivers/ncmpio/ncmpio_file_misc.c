@@ -318,6 +318,29 @@ ncmpio_inq(void *ncdp,
     return NC_NOERR;
 }
 
+/*----< ncmpio_inq() >-------------------------------------------------------*/
+int
+ncmpio_inq_block(void *ncdp,
+                int blkid,
+                char *name,
+                int *ndimsp, 
+                int *nvarsp, 
+                int *xtendimp)
+{
+    NC *ncp = (NC*)ncdp;
+    blkid = ncp->blocks.globalids[blkid];
+    if (blkid < 0 || blkid >= ncp->blocks.ndefined) DEBUG_RETURN_ERROR(NC_EINVAL)
+    if (name != NULL)
+        /* in PnetCDF, name is always NULL character terminated */
+        strcpy(name, ncp->blocks.value[blkid]->name);
+    if (ndimsp   != NULL) *ndimsp   = ncp->blocks.value[blkid]->dims.ndefined;
+    if (nvarsp   != NULL) *nvarsp   = ncp->blocks.value[blkid]->vars.ndefined;
+    if (xtendimp != NULL) *xtendimp = ncp->blocks.value[blkid]->dims.unlimited_id;
+
+    return NC_NOERR;
+}
+
+
 // /*----< ncmpio_inq() >-------------------------------------------------------*/
 // int
 // ncmpio_inq(void *ncdp,

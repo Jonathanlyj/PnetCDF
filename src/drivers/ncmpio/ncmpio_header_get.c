@@ -1352,9 +1352,13 @@ hdr_get_NC_blockarray(bufferinfo *gbp, NC *ncp)
     }
     alloc_size = _RNDUP(ndefined, PNC_ARRAY_GROWBY);
     ncp->blocks.value = (NC_block**) NCI_Calloc(alloc_size, sizeof(NC_block*));
+    ncp->blocks.localids = (int*) NCI_Calloc(alloc_size, sizeof(int));
+    ncp->blocks.globalids = (int*) NCI_Calloc(alloc_size, sizeof(int));
     /* get [block_info ...] */
     for (i = 0; i < ndefined; i++) {
         ncp->blocks.value[i] = NULL;
+        ncp->blocks.localids[i] = i;
+        ncp->blocks.globalids[i] = i;
         size_t name_len;
         char *name;
         NC_block *blockp;

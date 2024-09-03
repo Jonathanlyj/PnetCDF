@@ -125,3 +125,49 @@ ncmpi_inq_blkid(int         ncid,    /* IN:  file ID */
     /* calling the subroutine that implements ncmpi_inq_blkid() */
     return pncp->driver->inq_blkid(pncp->ncp, name, blkidp);
 }
+
+/*----< ncmpi_inq() >--------------------------------------------------------*/
+int ncmpi_inq_block(int ncid,
+                    int blkid,
+                    char *name,
+                    int *ndimsp, 
+                    int *nvarsp, 
+                    int *unlimdimidp)
+{
+    int err;
+    PNC *pncp;
+
+    /* check if ncid is valid */
+    err = PNC_check_id(ncid, &pncp);
+    if (err != NC_NOERR) return err;
+
+    /* calling the subroutine that implements ncmpi_inq() */
+    return pncp->driver->inq_block(pncp->ncp, blkid, name, ndimsp, nvarsp, unlimdimidp);
+}
+
+/*----< ncmpi_inq_blockname() >------------------------------------------------*/
+/* This is an independent subroutine */
+int
+ncmpi_inq_blockname(int   ncid,    /* IN:  file ID */
+                  int   blkid,   /* IN:  blk ID */
+                  char *name)    /* OUT: name of block */
+{
+    int err;
+    PNC *pncp;
+
+    /* check if ncid is valid */
+    err = PNC_check_id(ncid, &pncp);
+    if (err != NC_NOERR) return err;
+
+    /* using NC_GLOBAL in varid is illegal for this API. See
+     * http://www.unidata.ucar.edu/mailing_lists/archives/netcdfgroup/2015/msg00196.html
+     */
+    if (blkid == NC_GLOBAL) DEBUG_RETURN_ERROR(NC_EGLOBAL)
+
+    /* check whether block ID is valid */
+    if (blkid < 0 || blkid >= pncp->nblocks) DEBUG_RETURN_ERROR(NC_ENOTVAR)
+
+    /* calling the subroutine that implements ncmpi_inq_varname() */
+    //META: TODO: fix blkid here by adding blkid input argument to the function 
+    return pncp->driver->inq_block(pncp->ncp, blkid, name, NULL, NULL, NULL);
+}

@@ -1420,6 +1420,8 @@ ncmpi_inq(int  ncid,
     return pncp->driver->inq(pncp->ncp, nblksp, nattsp);
 }
 
+
+
 // /*----< ncmpi_inq_ndims() >--------------------------------------------------*/
 // int
 // ncmpi_inq_ndims(int  ncid,
@@ -1444,6 +1446,20 @@ ncmpi_inq_natts(int  ncid,
     return ncmpi_inq(ncid, NULL, nattsp);
 }
 
+
+int
+ncmpi_inq_nblocks(int  ncid,
+          int *nblksp)
+{
+    return ncmpi_inq(ncid, nblksp, NULL);
+}
+
+
+// int
+// ncmpi_open_block(int ncid, int blkid)
+// {
+//     return ncmpi_inq(ncid, nblksp, NULL);
+// }
 /*----< ncmpi_inq_unlimdim() >-----------------------------------------------*/
 // int
 // ncmpi_inq_unlimdim(int  ncid,
