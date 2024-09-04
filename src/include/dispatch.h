@@ -73,6 +73,7 @@ struct PNC_driver {
     int (*def_block)(void*,const char*,int*);
     int (*inq_blkid)(void*,const char*,int*);
     int (*inq_block)(void*, int, char*, int*, int*, int*);
+    int (*open_block)(void*, int);
 
 
     /* APIs read/write attributes */

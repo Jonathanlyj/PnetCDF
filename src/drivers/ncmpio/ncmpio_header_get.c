@@ -24,7 +24,7 @@
 
 #define NC_MAGIC_LEN 4
 
-/*----< compute_var_shape() >------------------------------------------------*/
+/*----< META:compute_var_shape_local() >------------------------------------------------*/
 /* Recompute the shapes of all variables: shape, xsz, and len
  * Sets ncp->begin_var to start of first variable.
  * Sets ncp->begin_rec to start of first record variable.
@@ -32,62 +32,86 @@
  * existent dimension, which would occur for a corrupt netcdf file.
  */
 static int
-compute_var_shape(NC *ncp)
+compute_var_shape_local(NC *ncp, int blkid)
 {
     int i, err;
-    NC_var *first_var = NULL;       /* first "non-record" var */
-    NC_var *first_rec = NULL;       /* first "record" var */
 
-    if (ncp->vars.ndefined == 0) return NC_NOERR;
+    if (ncp->blocks.value[blkid]->vars.ndefined == 0) return NC_NOERR;
 
-    ncp->begin_var = ncp->xsz;
-    ncp->begin_rec = ncp->xsz;
-    ncp->recsize   = 0;
-
-    for (i=0; i<ncp->vars.ndefined; i++) {
-        /* ncp->vars.value[i]->len will be recomputed from dimensions in
+    for (i=0; i<ncp->blocks.value[blkid]->vars.ndefined; i++) {
+        /* ncp->blocks.value[blkid]->vars.value[i]->len will be recomputed from dimensions in
          * ncmpio_NC_var_shape64() */
-        err = ncmpio_NC_var_shape64(ncp->vars.value[i], &ncp->dims);
+        err = ncmpio_NC_var_shape64(ncp->blocks.value[blkid]->vars.value[i], &ncp->dims);
         if (err != NC_NOERR) return err;
-
-        if (IS_RECVAR(ncp->vars.value[i])) {
-            if (first_rec == NULL) first_rec = ncp->vars.value[i];
-            ncp->recsize += ncp->vars.value[i]->len;
-        }
-        else { /* fixed-size variable */
-            if (first_var == NULL) first_var = ncp->vars.value[i];
-            /*
-             * Overwritten each time thru.
-             * Usually overwritten in first_rec != NULL clause.
-             */
-            ncp->begin_rec = ncp->vars.value[i]->begin
-                           + ncp->vars.value[i]->len;
-        }
     }
-
-    if (first_rec != NULL) {
-        if (ncp->begin_rec > first_rec->begin)
-            DEBUG_RETURN_ERROR(NC_ENOTNC) /* not a netCDF file or corrupted */
-
-        ncp->begin_rec = first_rec->begin;
-        /*
-         * for special case of exactly one record variable, pack value
-         */
-        if (ncp->recsize == first_rec->len)
-            ncp->recsize = *first_rec->dsizes * first_rec->xsz;
-    }
-
-    if (first_var != NULL)
-        ncp->begin_var = first_var->begin;
-    else
-        ncp->begin_var = ncp->begin_rec;
-
-    if (ncp->begin_var <= 0 || ncp->xsz > ncp->begin_var ||
-        ncp->begin_rec <= 0 || ncp->begin_var > ncp->begin_rec)
-        DEBUG_RETURN_ERROR(NC_ENOTNC) /* not a netCDF file or corrupted */
-
     return NC_NOERR;
 }
+
+
+// /*----< compute_var_shape() >------------------------------------------------*/
+// /* Recompute the shapes of all variables: shape, xsz, and len
+//  * Sets ncp->begin_var to start of first variable.
+//  * Sets ncp->begin_rec to start of first record variable.
+//  * Returns -1 on error. The only possible error is an reference to a non
+//  * existent dimension, which would occur for a corrupt netcdf file.
+//  */
+// static int
+// compute_var_shape(NC *ncp)
+// {
+//     int i, err;
+//     NC_var *first_var = NULL;       /* first "non-record" var */
+//     NC_var *first_rec = NULL;       /* first "record" var */
+
+//     if (ncp->blocks.value[blkid]->vars.ndefined == 0) return NC_NOERR;
+
+//     ncp->begin_var = ncp->xsz;
+//     ncp->begin_rec = ncp->xsz;
+//     ncp->recsize   = 0;
+
+//     for (i=0; i<ncp->blocks.value[blkid]->vars.ndefined; i++) {
+//         /* ncp->blocks.value[blkid]->vars.value[i]->len will be recomputed from dimensions in
+//          * ncmpio_NC_var_shape64() */
+//         err = ncmpio_NC_var_shape64(ncp->blocks.value[blkid]->vars.value[i], &ncp->dims);
+//         if (err != NC_NOERR) return err;
+
+//         if (IS_RECVAR(ncp->blocks.value[blkid]->vars.value[i])) {
+//             if (first_rec == NULL) first_rec = ncp->blocks.value[blkid]->vars.value[i];
+//             ncp->recsize += ncp->blocks.value[blkid]->vars.value[i]->len;
+//         }
+//         else { /* fixed-size variable */
+//             if (first_var == NULL) first_var = ncp->blocks.value[blkid]->vars.value[i];
+//             /*
+//              * Overwritten each time thru.
+//              * Usually overwritten in first_rec != NULL clause.
+//              */
+//             ncp->begin_rec = ncp->blocks.value[blkid]->vars.value[i]->begin
+//                            + ncp->blocks.value[blkid]->vars.value[i]->len;
+//         }
+//     }
+
+//     if (first_rec != NULL) {
+//         if (ncp->begin_rec > first_rec->begin)
+//             DEBUG_RETURN_ERROR(NC_ENOTNC) /* not a netCDF file or corrupted */
+
+//         ncp->begin_rec = first_rec->begin;
+//         /*
+//          * for special case of exactly one record variable, pack value
+//          */
+//         if (ncp->recsize == first_rec->len)
+//             ncp->recsize = *first_rec->dsizes * first_rec->xsz;
+//     }
+
+//     if (first_var != NULL)
+//         ncp->begin_var = first_var->begin;
+//     else
+//         ncp->begin_var = ncp->begin_rec;
+
+//     if (ncp->begin_var <= 0 || ncp->xsz > ncp->begin_var ||
+//         ncp->begin_rec <= 0 || ncp->begin_var > ncp->begin_rec)
+//         DEBUG_RETURN_ERROR(NC_ENOTNC) /* not a netCDF file or corrupted */
+
+//     return NC_NOERR;
+// }
 
 #define X_SIZEOF_NC_TYPE X_SIZEOF_INT
 #define X_SIZEOF_NC_TAG  X_SIZEOF_INT
@@ -1660,7 +1684,7 @@ ncmpio_global_hdr_get_NC(NC *ncp)
     else if (err != NC_NOERR) goto fn_exit;
 
     // /* get var_list from getbuf into ncp */
-    // err = hdr_get_NC_vararray(&getbuf, &ncp->vars, ncp->dims.ndefined);
+    // err = hdr_get_NC_vararray(&getbuf, &ncp->blocks.value[blkid]->vars, ncp->dims.ndefined);
     // if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
     // else if (err != NC_NOERR) goto fn_exit;
 
@@ -1669,20 +1693,22 @@ ncmpio_global_hdr_get_NC(NC *ncp)
     err = hdr_get_NC_blockarray(&getbuf, ncp);
     if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
     else if (err != NC_NOERR) goto fn_exit;
-    /* get the un-aligned size occupied by the file header */
-    ncp->xsz = ncmpio_hdr_len_NC(ncp);
-
+    /* get the size occupied by the file header */
+    ncp->global_xsz = ncmpio_global_hdr_len_NC(ncp);
+    NC_block *last_blockp = ncp->blocks.value[ncp->blocks.ndefined - 1];
+    ncp->xsz = last_blockp->begin + last_blockp->xsz;
+    //META: no way to compute var shape without var_list here 
+    //TODO: add begin_var and begin_rec to block struct
     /* Recompute the shapes of all variables (shape, xsz, len)
      * Sets ncp->begin_var to start of first variable.
      * Sets ncp->begin_rec to start of first record variable.
      */
-    err = compute_var_shape(ncp);
-    if (err != NC_NOERR) goto fn_exit;
+    // err = compute_var_shape(ncp);
+    // if (err != NC_NOERR) goto fn_exit;
+    
 
-    /* update the total number of record variables --------------------------*/
-    ncp->vars.num_rec_vars = 0;
-    for (i=0; i<ncp->vars.ndefined; i++)
-        ncp->vars.num_rec_vars += IS_RECVAR(ncp->vars.value[i]);
+
+
 
     /* Check whether variable sizes are legal for the given file format */
     err = ncmpio_NC_check_vlens(ncp);
@@ -1690,8 +1716,9 @@ ncmpio_global_hdr_get_NC(NC *ncp)
 
     /* Check whether variable begins are in an increasing order.
      * Adding this check here is necessary for detecting corrupted metadata. */
-    err = ncmpio_NC_check_voffs(ncp);
-    if (err != NC_NOERR) goto fn_exit;
+    //META: skip check for now, to enable this check, best way is to add begin_var and begin_rec to block struct
+    // err = ncmpio_NC_check_voffs(ncp);
+    // if (err != NC_NOERR) goto fn_exit;
 
 fn_exit:
     ncp->get_size += getbuf.get_size;
@@ -1701,7 +1728,7 @@ fn_exit:
 }
 
 
-/*----< ncmpio_hdr_get_NC() >------------------------------------------------*/
+/*----< ncmpio_local_hdr_get_NC() >------------------------------------------------*/
 /*  CDF format specification
  *      netcdf_file  = header  data
  *      header       = magic  numrecs  dim_list  gatt_list  var_list
@@ -1716,11 +1743,10 @@ fn_exit:
  *      var_list     = ABSENT | NC_VARIABLE   nelems  [var ...]
  */
 int
-ncmpio_hdr_get_NC(NC *ncp)
+ncmpio_local_hdr_get_NC(NC *ncp, int blkid)
 {
     int i, err, status=NC_NOERR;
     bufferinfo getbuf;
-    char magic[NC_MAGIC_LEN];
 
     assert(ncp != NULL);
 
@@ -1728,7 +1754,8 @@ ncmpio_hdr_get_NC(NC *ncp)
     getbuf.comm          = ncp->comm;
     getbuf.collective_fh = ncp->collective_fh;
     getbuf.get_size      = 0;
-    getbuf.offset        = 0;   /* read from start of the file */
+    //  getbuf.offset       = 0;
+    getbuf.offset        = ncp->blocks.value[blkid]->begin;   /* read from start of the block */
     getbuf.safe_mode     = ncp->safe_mode;
     getbuf.rw_mode       = (fIsSet(ncp->flags, NC_HCOLL)) ? 1 : 0;
 
@@ -1739,97 +1766,46 @@ ncmpio_hdr_get_NC(NC *ncp)
     getbuf.pos  = getbuf.base;
     getbuf.end  = getbuf.base + getbuf.chunk;
 
+    getbuf.version = ncp->format;
+
     /* Fetch the next header chunk. The chunk is 'gbp->chunk' bytes big */
     err = hdr_fetch(&getbuf);
     if (err != NC_NOERR) return err;
 
-    /* processing the header from getbuf, the get buffer */
-
-    /* First get the file format information, magic */
-    err = ncmpix_getn_text((const void **)(&getbuf.pos), NC_MAGIC_LEN, magic);
-    if (err != NC_NOERR) return err;
-
-    /* check if the first three bytes are 'C','D','F' */
-    if (memcmp(magic, "CDF", 3) != 0) {
-        /* check if is HDF5 file */
-        char signature[8], *hdf5_signature="\211HDF\r\n\032\n";
-        ncmpix_getn_text((const void **)(&getbuf.pos), 8, signature);
-        if (memcmp(signature, hdf5_signature, 8) == 0) {
-            DEBUG_ASSIGN_ERROR(err, NC_ENOTNC3)
-            if (ncp->safe_mode)
-                fprintf(stderr,"Error: file %s is HDF5 format\n",ncp->path);
-        }
-        else
-            DEBUG_ASSIGN_ERROR(err, NC_ENOTNC)
-        goto fn_exit;
-    }
-
-    /* check version number in last byte of magic */
-    if (magic[3] == 0x1) {
-        getbuf.version = ncp->format = 1;
-    } else if (magic[3] == 0x2) {
-        getbuf.version = ncp->format = 2;
-    } else if (magic[3] == 0x5) {
-        getbuf.version = ncp->format = 5;
-    } else {
-        NCI_Free(getbuf.base);
-        DEBUG_RETURN_ERROR(NC_ENOTNC) /* not a netCDF file */
-    }
-
-    /* get numrecs from getbuf into ncp */
-    if (getbuf.version < 5) {
-        uint tmp=0;
-        err = hdr_get_uint32(&getbuf, &tmp);
-        if (err != NC_NOERR) goto fn_exit;
-        ncp->numrecs = (MPI_Offset)tmp;
-    }
-    else {
-        uint64 tmp=0;
-        err = hdr_get_uint64(&getbuf, &tmp);
-        if (err != NC_NOERR) goto fn_exit;
-        ncp->numrecs = (MPI_Offset)tmp;
-    }
-
     assert(getbuf.pos < getbuf.end);
 
     /* get dim_list from getbuf into ncp */
-    err = hdr_get_NC_dimarray(&getbuf, &ncp->dims);
+    err = hdr_get_NC_dimarray(&getbuf, &ncp->blocks.value[blkid]->dims);
     if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
     else if (err != NC_NOERR) goto fn_exit;
 
-    /* get gatt_list from getbuf into ncp */
-    err = hdr_get_NC_attrarray(&getbuf, &ncp->attrs);
-    if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
-    else if (err != NC_NOERR) goto fn_exit;
 
     /* get var_list from getbuf into ncp */
-    err = hdr_get_NC_vararray(&getbuf, &ncp->vars, ncp->dims.ndefined);
+    err = hdr_get_NC_vararray(&getbuf, &ncp->blocks.value[blkid]->vars, ncp->dims.ndefined);
     if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
     else if (err != NC_NOERR) goto fn_exit;
 
     /* get the un-aligned size occupied by the file header */
-    ncp->xsz = ncmpio_hdr_len_NC(ncp);
+    ncp->blocks.value[blkid]->xsz = ncmpio_block_hdr_len_NC(ncp, blkid);
 
     /* Recompute the shapes of all variables (shape, xsz, len)
-     * Sets ncp->begin_var to start of first variable.
-     * Sets ncp->begin_rec to start of first record variable.
      */
-    err = compute_var_shape(ncp);
+    err = compute_var_shape_local(ncp, blkid);
     if (err != NC_NOERR) goto fn_exit;
 
     /* update the total number of record variables --------------------------*/
-    ncp->vars.num_rec_vars = 0;
-    for (i=0; i<ncp->vars.ndefined; i++)
-        ncp->vars.num_rec_vars += IS_RECVAR(ncp->vars.value[i]);
+    ncp->blocks.value[blkid]->vars.num_rec_vars = 0;
+    for (i=0; i<ncp->blocks.value[blkid]->vars.ndefined; i++)
+        ncp->blocks.value[blkid]->vars.num_rec_vars += IS_RECVAR(ncp->blocks.value[blkid]->vars.value[i]);
 
-    /* Check whether variable sizes are legal for the given file format */
-    err = ncmpio_NC_check_vlens(ncp);
-    if (err != NC_NOERR) goto fn_exit;
+    // /* Check whether variable sizes are legal for the given file format */
+    // err = ncmpio_NC_check_vlens(ncp);
+    // if (err != NC_NOERR) goto fn_exit;
 
     /* Check whether variable begins are in an increasing order.
      * Adding this check here is necessary for detecting corrupted metadata. */
-    err = ncmpio_NC_check_voffs(ncp);
-    if (err != NC_NOERR) goto fn_exit;
+    // err = ncmpio_NC_check_voffs(ncp);
+    // if (err != NC_NOERR) goto fn_exit;
 
 fn_exit:
     ncp->get_size += getbuf.get_size;
@@ -1837,6 +1813,144 @@ fn_exit:
 
     return (err == NC_NOERR) ? status : err;
 }
+
+
+// /*----< ncmpio_hdr_get_NC() >------------------------------------------------*/
+// /*  CDF format specification
+//  *      netcdf_file  = header  data
+//  *      header       = magic  numrecs  dim_list  gatt_list  var_list
+//  *      magic        = 'C'  'D'  'F'  VERSION
+//  *      VERSION      = \x01 |                      // classic format
+//  *                     \x02 |                      // 64-bit offset format
+//  *                     \x05                        // 64-bit data format
+//  *      numrecs      = NON_NEG | STREAMING         // length of record dimension
+//  *      dim_list     = ABSENT | NC_DIMENSION  nelems  [dim ...]
+//  *      gatt_list    = att_list                    // global attributes
+//  *      att_list     = ABSENT | NC_ATTRIBUTE  nelems  [attr ...]
+//  *      var_list     = ABSENT | NC_VARIABLE   nelems  [var ...]
+//  */
+// int
+// ncmpio_hdr_get_NC(NC *ncp)
+// {
+//     int i, err, status=NC_NOERR;
+//     bufferinfo getbuf;
+//     char magic[NC_MAGIC_LEN];
+
+//     assert(ncp != NULL);
+
+//     /* Initialize the get buffer that stores the header read from the file */
+//     getbuf.comm          = ncp->comm;
+//     getbuf.collective_fh = ncp->collective_fh;
+//     getbuf.get_size      = 0;
+//     getbuf.offset        = 0;   /* read from start of the file */
+//     getbuf.safe_mode     = ncp->safe_mode;
+//     getbuf.rw_mode       = (fIsSet(ncp->flags, NC_HCOLL)) ? 1 : 0;
+
+//     /* CDF-5's minimum header size is 4 bytes more than CDF-1 and CDF-2's */
+//     getbuf.chunk = _RNDUP( MAX(MIN_NC_XSZ+4, ncp->chunk), X_ALIGN );
+
+//     getbuf.base = (char*) NCI_Malloc(getbuf.chunk);
+//     getbuf.pos  = getbuf.base;
+//     getbuf.end  = getbuf.base + getbuf.chunk;
+
+//     /* Fetch the next header chunk. The chunk is 'gbp->chunk' bytes big */
+//     err = hdr_fetch(&getbuf);
+//     if (err != NC_NOERR) return err;
+
+//     /* processing the header from getbuf, the get buffer */
+
+//     /* First get the file format information, magic */
+//     err = ncmpix_getn_text((const void **)(&getbuf.pos), NC_MAGIC_LEN, magic);
+//     if (err != NC_NOERR) return err;
+
+//     /* check if the first three bytes are 'C','D','F' */
+//     if (memcmp(magic, "CDF", 3) != 0) {
+//         /* check if is HDF5 file */
+//         char signature[8], *hdf5_signature="\211HDF\r\n\032\n";
+//         ncmpix_getn_text((const void **)(&getbuf.pos), 8, signature);
+//         if (memcmp(signature, hdf5_signature, 8) == 0) {
+//             DEBUG_ASSIGN_ERROR(err, NC_ENOTNC3)
+//             if (ncp->safe_mode)
+//                 fprintf(stderr,"Error: file %s is HDF5 format\n",ncp->path);
+//         }
+//         else
+//             DEBUG_ASSIGN_ERROR(err, NC_ENOTNC)
+//         goto fn_exit;
+//     }
+
+//     /* check version number in last byte of magic */
+//     if (magic[3] == 0x1) {
+//         getbuf.version = ncp->format = 1;
+//     } else if (magic[3] == 0x2) {
+//         getbuf.version = ncp->format = 2;
+//     } else if (magic[3] == 0x5) {
+//         getbuf.version = ncp->format = 5;
+//     } else {
+//         NCI_Free(getbuf.base);
+//         DEBUG_RETURN_ERROR(NC_ENOTNC) /* not a netCDF file */
+//     }
+
+//     /* get numrecs from getbuf into ncp */
+//     if (getbuf.version < 5) {
+//         uint tmp=0;
+//         err = hdr_get_uint32(&getbuf, &tmp);
+//         if (err != NC_NOERR) goto fn_exit;
+//         ncp->numrecs = (MPI_Offset)tmp;
+//     }
+//     else {
+//         uint64 tmp=0;
+//         err = hdr_get_uint64(&getbuf, &tmp);
+//         if (err != NC_NOERR) goto fn_exit;
+//         ncp->numrecs = (MPI_Offset)tmp;
+//     }
+
+//     assert(getbuf.pos < getbuf.end);
+
+//     /* get dim_list from getbuf into ncp */
+//     err = hdr_get_NC_dimarray(&getbuf, &ncp->dims);
+//     if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
+//     else if (err != NC_NOERR) goto fn_exit;
+
+//     /* get gatt_list from getbuf into ncp */
+//     err = hdr_get_NC_attrarray(&getbuf, &ncp->attrs);
+//     if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
+//     else if (err != NC_NOERR) goto fn_exit;
+
+//     /* get var_list from getbuf into ncp */
+//     err = hdr_get_NC_vararray(&getbuf, &ncp->blocks.value[blkid]->vars, ncp->dims.ndefined);
+//     if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
+//     else if (err != NC_NOERR) goto fn_exit;
+
+//     /* get the un-aligned size occupied by the file header */
+//     ncp->xsz = ncmpio_hdr_len_NC(ncp);
+
+//     /* Recompute the shapes of all variables (shape, xsz, len)
+//      * Sets ncp->begin_var to start of first variable.
+//      * Sets ncp->begin_rec to start of first record variable.
+//      */
+//     err = compute_var_shape(ncp);
+//     if (err != NC_NOERR) goto fn_exit;
+
+//     /* update the total number of record variables --------------------------*/
+//     ncp->blocks.value[blkid]->vars.num_rec_vars = 0;
+//     for (i=0; i<ncp->blocks.value[blkid]->vars.ndefined; i++)
+//         ncp->blocks.value[blkid]->vars.num_rec_vars += IS_RECVAR(ncp->blocks.value[blkid]->vars.value[i]);
+
+//     /* Check whether variable sizes are legal for the given file format */
+//     err = ncmpio_NC_check_vlens(ncp);
+//     if (err != NC_NOERR) goto fn_exit;
+
+//     /* Check whether variable begins are in an increasing order.
+//      * Adding this check here is necessary for detecting corrupted metadata. */
+//     err = ncmpio_NC_check_voffs(ncp);
+//     if (err != NC_NOERR) goto fn_exit;
+
+// fn_exit:
+//     ncp->get_size += getbuf.get_size;
+//     NCI_Free(getbuf.base);
+
+//     return (err == NC_NOERR) ? status : err;
+// }
 
 
 

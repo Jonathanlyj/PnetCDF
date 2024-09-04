@@ -1665,7 +1665,7 @@ ncmpio__enddef(void       *ncdp,
     ncp->blocks.ndefined = new_total;
     // printf("\nlast:ncp->blocks.value[0]->name: %s\n", ncp->blocks.value[0]->name);
     // printf("\nlast:ncp->blocks.value[0]->dims.value[0]->name: %s\n", ncp->blocks.value[0]->dims.value[0]->name);
-    printf("\n err is: %d", err);
+
     CHECK_ERROR(err);
     NCI_Free(local_buff);
     NCI_Free(all_num_news);

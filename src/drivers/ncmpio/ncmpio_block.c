@@ -210,3 +210,40 @@ ncmpio_free_NC_blockarray(NC_blockarray *ncap)
 }
 
 
+/*----< ncmpio_open_block() >---------------------------------------------------*/
+int
+ncmpio_open_block(void       *ncdp,    /* IN:  NC object */
+               int        blkid)  /* IN: block ID */
+{
+    int err=NC_NOERR;
+
+    NC *ncp=(NC*)ncdp;
+    NC_block *blockp=NULL;
+
+    /* retrieve the block object (blkp->name points to nname) */
+    blockp = ncp->blocks.value[blkid];
+
+    blockp->name_len = strlen(blockp->name);
+    blockp->modified = 0; /* set to unmodified */
+    /*init dim and var arrays*/
+    blockp->dims.ndefined = 0;
+    blockp->dims.value = NULL;
+    blockp->dims.nameT = NULL;
+    blockp->dims.hash_size = ncp->hash_size_dim;
+    blockp->vars.ndefined = 0;
+    blockp->vars.value = NULL;
+    blockp->vars.nameT = NULL;
+    blockp->vars.hash_size = ncp->hash_size_var;
+
+    /* initialize unlimited_id as no unlimited dimension yet defined */
+    blockp->dims.unlimited_id = -1;
+    err = ncmpio_local_hdr_get_NC(ncp, blkid);
+
+#ifndef SEARCH_NAME_LINEARLY
+    /* initialize and populate name lookup tables ---------------------------*/
+    ncmpio_hash_table_populate_NC_dim(&blockp->dims, ncp->hash_size_dim);
+    ncmpio_hash_table_populate_NC_var(&blockp->vars, ncp->hash_size_var);
+#endif
+
+    return err;
+}

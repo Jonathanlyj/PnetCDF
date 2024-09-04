@@ -294,7 +294,7 @@ typedef struct NC_block{
     MPI_Offset   xsz;      /* size of the block header*/
     MPI_Offset   block_var_len; /* size of the block fix-sized var size*/
     MPI_Offset   block_recvar_len; /* size of the block record var size*/
-    MPI_Offset   begin;      /* size of the block */
+    MPI_Offset   begin;      /* file offsets of the block header */
     NC_dimarray   dims;    /* dimensions defined */
     NC_vararray   vars;    /* variables defined */
     int          numrecs;
@@ -570,6 +570,9 @@ ncmpio_global_hdr_put_NC(NC *ncp, void *buf);
 
 extern int
 ncmpio_global_hdr_get_NC(NC *ncp);
+
+extern int
+ncmpio_local_hdr_get_NC(NC *ncp, int blkid);
 
 extern int
 ncmpio_write_header(NC *ncp);

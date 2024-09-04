@@ -17,7 +17,7 @@
 #include <pnc_debug.h>
 #include <common.h>
 
-/*----< ncmpi_def_block() >----------------------------------------------------*/
+/*META----< ncmpi_def_block() >----------------------------------------------------*/
 /* This is a collective subroutine. */
 int
 ncmpi_def_block(int         ncid,    /* IN:  file ID */
@@ -171,3 +171,103 @@ ncmpi_inq_blockname(int   ncid,    /* IN:  file ID */
     //META: TODO: fix blkid here by adding blkid input argument to the function 
     return pncp->driver->inq_block(pncp->ncp, blkid, name, NULL, NULL, NULL);
 }
+#define _NDIMS_ 16
+/*META----< ncmpi_open_block() >---------------------------------------------*/
+int
+ncmpi_open_block(int ncid, int blkid){
+    //This function is similar to the original ncmpi_open function
+    int i, j, nalloc, status=NC_NOERR, err;
+    int safe_mode=0, mpireturn, DIMIDS[_NDIMS_], *dimids;
+    void *ncp;
+    PNC *pncp;
+    PNC_driver *driver;
+
+    /* check if ncid is valid */
+    err = PNC_check_id(ncid, &pncp);
+    if (err != NC_NOERR) return err;
+
+
+    /* check whether block ID is valid */
+    if (blkid < 0 || blkid >= pncp->nblocks) DEBUG_RETURN_ERROR(NC_ENOTVAR)
+
+    /* calling the driver's open subroutine */
+    err = pncp->driver->open_block(pncp->ncp, blkid);
+
+    /* fill in pncp members */
+    //blkid here is the local block ids
+    pncp->blocks[blkid].ndims = 0;
+    pncp->blocks[blkid].nvars = 0;
+    pncp->blocks[blkid].nrec_vars = 0;
+    pncp->blocks[blkid].vars = NULL;
+    pncp->blocks[blkid].unlimdimid = -1;
+
+    /* inquire number of dimensions, variables defined and rec dim ID */
+    err = pncp->driver->inq_block(pncp->ncp, blkid, NULL, &pncp->ndims, &pncp->blocks[blkid].nvars,
+                      &pncp->blocks[blkid].unlimdimid);
+    if (err != NC_NOERR) goto fn_exit;
+
+    if (pncp->blocks[blkid].nvars == 0) return status; /* no variable defined in the file */
+
+    /* make a copy of variable metadata at the dispatcher layer, because
+     * sanity check is done at the dispatcher layer
+     */
+
+    /* allocate chunk size for pncp->blocks[blkid]->vars[] */
+    nalloc = _RNDUP(pncp->blocks[blkid].nvars, PNC_VARS_CHUNK);
+    pncp->blocks[blkid].vars = NCI_Malloc(nalloc * sizeof(PNC_var));
+    if (pncp->blocks[blkid].vars == NULL) {
+        DEBUG_ASSIGN_ERROR(err, NC_ENOMEM)
+        goto fn_exit;
+    }
+
+    dimids = DIMIDS;
+
+    /* construct array of PNC_var for all variables */
+    for (i=0; i<pncp->blocks[blkid].nvars; i++) {
+        int ndims, max_ndims=_NDIMS_;
+        pncp->blocks[blkid].vars[i].shape  = NULL;
+        pncp->blocks[blkid].vars[i].recdim = -1;   /* if fixed-size variable */
+        err = pncp->driver->inq_var(pncp->ncp, blkid, i, NULL, &pncp->blocks[blkid].vars[i].xtype, &ndims,
+                              NULL, NULL, NULL, NULL, NULL);
+        if (err != NC_NOERR) break; /* loop i */
+        pncp->blocks[blkid].vars[i].ndims = ndims;
+
+        if (ndims > 0) {
+            pncp->blocks[blkid].vars[i].shape = (MPI_Offset*)
+                                  NCI_Malloc(ndims * SIZEOF_MPI_OFFSET);
+            if (ndims > max_ndims) { /* avoid repeated malloc */
+                if (dimids == DIMIDS) dimids = NULL;
+                dimids = (int*) NCI_Realloc(dimids, ndims * SIZEOF_INT);
+                max_ndims = ndims;
+            }
+            err = pncp->driver->inq_var(pncp->ncp, blkid, i, NULL, NULL, NULL,
+                                  dimids, NULL, NULL, NULL, NULL);
+            if (err != NC_NOERR) break; /* loop i */
+            if (dimids[0] == pncp->blocks[blkid].unlimdimid)
+                pncp->blocks[blkid].vars->recdim = pncp->blocks[blkid].unlimdimid;
+            for (j=0; j<ndims; j++) {
+                /* obtain size of dimension j */
+                err = pncp->driver->inq_dim(pncp->ncp, blkid, dimids[j], NULL,
+                                      pncp->blocks[blkid].vars[i].shape+j);
+                if (err != NC_NOERR) break; /* loop i */
+            }
+        }
+        if (pncp->blocks[blkid].vars[i].recdim >= 0) pncp->nrec_vars++;
+    }
+    if (err != NC_NOERR) { /* error happens in loop i */
+        assert(i < pncp->blocks[blkid].nvars);
+        for (j=0; j<=i; j++) {
+            if (pncp->blocks[blkid].vars[j].shape != NULL)
+                NCI_Free(pncp->blocks[blkid].vars[j].shape);
+        }
+        NCI_Free(pncp->blocks[blkid].vars);
+    }
+    if (dimids != DIMIDS) NCI_Free(dimids);
+
+fn_exit:
+    if (err != NC_NOERR) {
+    if (status == NC_NOERR) status = err;
+    }
+    return status;
+}
+

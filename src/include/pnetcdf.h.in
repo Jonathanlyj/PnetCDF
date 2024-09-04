@@ -803,7 +803,20 @@ ncmpi_rename_var(int ncid, int blkid, int varid, const char *name);
 extern int
 ncmpi_def_block(int ncid, const char *name, int *blkidp);
 //META: add block related functions
+extern int
+ncmpi_open_block(int ncid, int blkid);
 
+extern int
+ncmpi_inq_nblocks(int ncid, int *nblksp);
+
+extern int
+ncmpi_inq_blockname(int ncid, int blkid, char *name);
+
+extern int
+ncmpi_inq_blkid(int ncid, const char *name, int *blkidp);
+
+extern int
+ncmpi_inq_block(int ncid, int blkid, char *name, int *ndimsp, int *nvarsp, int *unlimdimidp);
 
 /* End Define Mode Functions */
 
@@ -812,7 +825,7 @@ ncmpi_def_block(int ncid, const char *name, int *blkidp);
 const char* ncmpi_inq_libvers(void);
 
 extern int
-ncmpi_inq(int ncid, int *ndimsp, int *nvarsp, int *ngattsp, int *unlimdimidp);
+ncmpi_inq(int ncid, int *nblksp, int *ngattsp);
 
 extern int
 ncmpi_inq_format(int ncid, int *formatp);

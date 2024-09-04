@@ -70,6 +70,9 @@ ncmpio_def_dim(void *ncdp, int blkid, const char *name, MPI_Offset size, int *di
 extern int
 ncmpio_def_block(void *ncdp, const char *name, int *blkidp);
 
+extern int 
+ncmpio_open_block(void *ncdp, int blkid);
+
 extern int
 ncmpio_inq_dimid(void *ncdp, int blkid, const char *name, int *dimidp);
 

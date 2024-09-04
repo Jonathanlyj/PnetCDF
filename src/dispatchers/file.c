@@ -758,6 +758,7 @@ ncmpi_open(MPI_Comm    comm,
     /* calling the driver's open subroutine */
     err = driver->open(pncp->comm, path, omode, *ncidp, combined_info, &ncp);
 
+
     if (status == NC_NOERR) status = err;
     if (combined_info != MPI_INFO_NULL) MPI_Info_free(&combined_info);
     if (status != NC_NOERR && status != NC_EMULTIDEFINE_OMODE &&
@@ -806,7 +807,8 @@ ncmpi_open(MPI_Comm    comm,
     err = driver->inq(pncp->ncp, &pncp->nblocks, NULL);
     if (err != NC_NOERR) goto fn_exit;
 
-    if (pncp->nvars == 0) return status; /* no variable defined in the file */
+    // if (pncp->nvars == 0) return status; /* no variable defined in the file */
+    if (pncp->nblocks == 0) return status; /* no variable defined in the file */
 
     /* make a copy of variable metadata at the dispatcher layer, because
      * sanity check is done at the dispatcher layer
@@ -816,6 +818,7 @@ ncmpi_open(MPI_Comm    comm,
     /* allocate chunk size for pncp->vars[] */
     nalloc = _RNDUP(pncp->nblocks, PNC_BLOCKS_CHUNK);
     pncp->blocks = NCI_Malloc(nalloc * sizeof(PNC_block));
+
     if (pncp->blocks == NULL) {
         DEBUG_ASSIGN_ERROR(err, NC_ENOMEM)
         goto fn_exit;
