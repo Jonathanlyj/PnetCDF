@@ -227,8 +227,8 @@ ncmpio_read_write(NC           *ncp,
 
         if (coll_indep == NC_REQ_COLL) {
 
-            printf("xlen: %d\n", xlen);
-            printf("offset: %lld\n", offset);
+            // printf("xlen: %d\n", xlen);
+            // printf("offset: %lld\n", offset);
             TRACE_IO(MPI_File_write_at_all)(fh, offset, xbuf, xlen, xbuf_type,
                                             &mpistatus);
             if (mpireturn != MPI_SUCCESS) {
@@ -241,8 +241,8 @@ ncmpio_read_write(NC           *ncp,
             }
         } else {
 
-            printf("xlen: %d\n", xlen);
-            printf("offset: %lld\n", offset);
+            // printf("xlen: %d\n", xlen);
+            // printf("offset: %lld\n", offset);
             TRACE_IO(MPI_File_write_at)(fh, offset, xbuf, xlen, xbuf_type,
                                         &mpistatus);
             if (mpireturn != MPI_SUCCESS) {

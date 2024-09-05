@@ -204,7 +204,7 @@ err_check:
     /* calling the subroutine that implements ncmpi_def_var() */
     err = pncp->driver->def_var(pncp->ncp, blkid, name, type, ndims, dimids, varidp);
     if (err != NC_NOERR) return err;
-    printf("\nvaridp: %d\n", *varidp);
+
     assert(*varidp == pncp->blocks[blkid].nvars);
 
     /* add new variable into pnc-vars[] */

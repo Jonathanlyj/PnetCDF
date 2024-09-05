@@ -1785,7 +1785,6 @@ ncmpio_local_hdr_get_NC(NC *ncp, int blkid)
     err = hdr_get_NC_vararray(&getbuf, &ncp->blocks.value[blkid]->vars, ncp->blocks.value[blkid]->dims.ndefined);
     if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
     else if (err != NC_NOERR) goto fn_exit;
-    printf("ncp->blocks.value[blkid]->vars.value[0]->dimids[0] = %d\n", ncp->blocks.value[blkid]->vars.value[0]->dimids[0]);
 
     /* get the un-aligned size occupied by the file header */
     ncp->blocks.value[blkid]->xsz = ncmpio_block_hdr_len_NC(ncp, blkid);

@@ -197,6 +197,8 @@ ncmpio_free_NC_blockarray(NC_blockarray *ncap)
         NCI_Free(ncap->value);
         ncap->value = NULL;
     }
+    NCI_Free(ncap->globalids);
+    NCI_Free(ncap->localids);
     ncap->ndefined = 0;
 
 #ifndef SEARCH_NAME_LINEARLY

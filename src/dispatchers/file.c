@@ -818,6 +818,13 @@ ncmpi_open(MPI_Comm    comm,
     /* allocate chunk size for pncp->vars[] */
     nalloc = _RNDUP(pncp->nblocks, PNC_BLOCKS_CHUNK);
     pncp->blocks = NCI_Malloc(nalloc * sizeof(PNC_block));
+    for(int i=0; i<pncp->nblocks; i++) {
+        pncp->blocks[i].vars = NULL;
+        pncp->blocks[i].nvars = 0;
+        pncp->blocks[i].unlimdimid = -1;
+        pncp->blocks[i].ndims = 0;
+        pncp->blocks[i].nrec_vars = 0;
+    }
 
     if (pncp->blocks == NULL) {
         DEBUG_ASSIGN_ERROR(err, NC_ENOMEM)
@@ -913,11 +920,15 @@ ncmpi_close(int ncid)
         MPI_Comm_free(&pncp->comm); /* a collective call */
 
     NCI_Free(pncp->path);
-    for (i=0; i<pncp->nvars; i++)
-        if (pncp->vars[i].shape != NULL)
-            NCI_Free(pncp->vars[i].shape);
-    if (pncp->vars != NULL)
-        NCI_Free(pncp->vars);
+    for (int j=0; j<pncp->nblocks; j++) {
+        for (i=0; i<pncp->blocks[j].nvars; i++)
+            if (pncp->blocks[j].vars[i].shape != NULL)
+                NCI_Free(pncp->blocks[j].vars[i].shape);
+        if (pncp->blocks[j].vars != NULL)
+            NCI_Free(pncp->blocks[j].vars);
+    }
+
+    NCI_Free(pncp->blocks);
     NCI_Free(pncp);
 
     return err;

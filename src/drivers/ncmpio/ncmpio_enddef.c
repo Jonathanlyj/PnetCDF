@@ -578,7 +578,7 @@ NC_begins(NC *ncp)
     // else /* no variable defined, ignore alignment and set header extent to
     //       * header size */
     //     ncp->begin_var = ncp->xsz;
-    printf("\nrank %d, ncp->xsz: %lld", rank, ncp->xsz);
+    // printf("\nrank %d, ncp->xsz: %lld", rank, ncp->xsz);
     ncp->begin_var = D_RNDUP(ncp->xsz + ncp->h_minfree, ncp->h_align);
     //META:for debugging
     if (ncp->old != NULL) {
@@ -773,7 +773,7 @@ write_NC(NC *ncp)
          */
         buf = (char*)NCI_Calloc(global_header_wlen, 1);
 #else
-        printf("\nglobal_header_wlen: %lld", global_header_wlen);
+        // printf("\nglobal_header_wlen: %lld", global_header_wlen);
         /* Do not write padding area (between ncp->xsz and ncp->begin_var) */
         buf = (char*)NCI_Malloc(global_header_wlen);
 #endif
@@ -803,7 +803,7 @@ write_NC(NC *ncp)
         buf_ptr = buf;
         for (i=0; i<ntimes; i++) {
             int bufCount = (int) MIN(remain, NC_MAX_INT);
-            printf("\nwrite global header at offset %lld, bufCount: %d", offset, bufCount);
+            // printf("\nwrite global header at offset %lld, bufCount: %d", offset, bufCount);
             if (fIsSet(ncp->flags, NC_HCOLL))
                 TRACE_IO(MPI_File_write_at_all)(ncp->collective_fh, offset, buf_ptr,
                                                 bufCount, MPI_BYTE, &mpistatus);
@@ -874,9 +874,9 @@ write_NC(NC *ncp)
                 j++;
             }
         }
-        for (int i = 0; i < num_blocks_w; i++){
-            printf("\nrank %d, blocklens[%d]: %d, filedisps[%d]: %lld", rank, i, blocklens[i], i, filedisps[i]);
-        }   
+        // for (int i = 0; i < num_blocks_w; i++){
+        //     printf("\nrank %d, blocklens[%d]: %d, filedisps[%d]: %lld", rank, i, blocklens[i], i, filedisps[i]);
+        // }   
         MPI_Type_create_hindexed(num_blocks_w, blocklens, memdisps, MPI_BYTE, &memtype);
         MPI_Type_commit(&memtype);
         NCI_Free(memdisps);
@@ -1673,6 +1673,7 @@ ncmpio__enddef(void       *ncdp,
     NCI_Free(recv_displs);
     NCI_Free(recvcounts);
     NCI_Free(all_collections_buffer);
+    NCI_Free(new_block_offsets);
     err = NC_begins(ncp);
     CHECK_ERROR(err)
     /* update the total number of record variables */
