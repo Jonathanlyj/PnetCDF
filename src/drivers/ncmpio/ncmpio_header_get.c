@@ -41,7 +41,7 @@ compute_var_shape_local(NC *ncp, int blkid)
     for (i=0; i<ncp->blocks.value[blkid]->vars.ndefined; i++) {
         /* ncp->blocks.value[blkid]->vars.value[i]->len will be recomputed from dimensions in
          * ncmpio_NC_var_shape64() */
-        err = ncmpio_NC_var_shape64(ncp->blocks.value[blkid]->vars.value[i], &ncp->dims);
+        err = ncmpio_NC_var_shape64(ncp->blocks.value[blkid]->vars.value[i], &ncp->blocks.value[blkid]->dims);
         if (err != NC_NOERR) return err;
     }
     return NC_NOERR;
@@ -1072,6 +1072,7 @@ hdr_get_NC_var(bufferinfo  *gbp,
 
     /* get name */
     err = hdr_get_NC_name(gbp, &name, &name_len);
+    
     if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
     else if (err != NC_NOERR) return err;
 
@@ -1781,9 +1782,10 @@ ncmpio_local_hdr_get_NC(NC *ncp, int blkid)
 
 
     /* get var_list from getbuf into ncp */
-    err = hdr_get_NC_vararray(&getbuf, &ncp->blocks.value[blkid]->vars, ncp->dims.ndefined);
+    err = hdr_get_NC_vararray(&getbuf, &ncp->blocks.value[blkid]->vars, ncp->blocks.value[blkid]->dims.ndefined);
     if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
     else if (err != NC_NOERR) goto fn_exit;
+    printf("ncp->blocks.value[blkid]->vars.value[0]->dimids[0] = %d\n", ncp->blocks.value[blkid]->vars.value[0]->dimids[0]);
 
     /* get the un-aligned size occupied by the file header */
     ncp->blocks.value[blkid]->xsz = ncmpio_block_hdr_len_NC(ncp, blkid);
