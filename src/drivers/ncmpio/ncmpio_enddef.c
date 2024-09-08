@@ -291,19 +291,20 @@ hdr_put_NC_modified_blockarray(const NC_blockarray *ncpb, bufferinfo *pbp) {
     for (i=0; i<ncpb->ndefined; i++) {
         if (ncpb->value[i]->modified) {
             //copy block id
-
             status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)i);
             if (status != NC_NOERR) return status;
             //copy block name
-            // printf("\npbp->pos - pbp->base: %ld\n", pbp->pos - pbp->base);
-            status = hdr_put_NC_name(pbp, ncpb->value[i]->name);
+            size_t nchars = strlen(ncpb->value[i]->name);
+            status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)nchars);
+            status = ncmpix_pad_putn_text((void **)(&pbp->pos), (MPI_Offset)nchars, ncpb->value[i]->name);
             //copy block size
             status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncpb->value[i]->xsz);
             if (status != NC_NOERR) return status;
-            //copy block var sie
+            //copy block var size
             status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncpb->value[i]->block_var_len);
+
             if (status != NC_NOERR) return status;
-            //copy block rec var sie
+            //copy block rec var size
             status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncpb->value[i]->block_recvar_len);
             if (status != NC_NOERR) return status;
             }
@@ -351,13 +352,9 @@ hdr_len_NC_modified_blockarray(const NC_blockarray *ncpb) {
         for (int i = 0; i < ncpb->ndefined; i++) {
             if (ncpb->value[i]->modified) {
                 buffer_size += sizeof(uint32_t); // block ID
-
                 buffer_size += sizeof(uint32_t) + _RNDUP(ncpb->value[i]->name_len, X_ALIGN); 
-
                 buffer_size += sizeof(uint32_t); // block size
-
                 buffer_size += sizeof(uint32_t); // block non-record var size
-
                 buffer_size += sizeof(uint32_t); // block record var size
             }
         }
@@ -373,7 +370,9 @@ static int deserialize_bufferinfo_array(NC *ncp, void *buf, int *recv_displs, in
     recvbuff.pos           = buf;
     recvbuff.base          = buf;
     recvbuff.chunk = _RNDUP( MAX(MIN_NC_XSZ+4, ncp->chunk), X_ALIGN );
+    //always use version 1 or 2 for using uinit32
 
+    recvbuff.version      = 1;
 
     
     for (int i=0; i<nproc; i++){
@@ -392,7 +391,6 @@ static int deserialize_bufferinfo_array(NC *ncp, void *buf, int *recv_displs, in
                 return err;
             }
         }
-        // err = hdr_get_NC_modified_blockarray(&recvbuff, &ncp->blocks, i, new_block_offsets);
     }
     return NC_NOERR;
 

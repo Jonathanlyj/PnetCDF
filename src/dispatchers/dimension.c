@@ -159,7 +159,7 @@ err_check:
     if (size == NC_UNLIMITED && pncp->unlimdimid == -1)
         pncp->unlimdimid = dimid;
 
-    pncp->ndims++;
+    pncp->blocks[blkid].ndims++;
 
     if (dimidp != NULL) *dimidp = dimid;
 

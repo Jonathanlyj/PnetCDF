@@ -921,14 +921,15 @@ ncmpi_close(int ncid)
 
     NCI_Free(pncp->path);
     for (int j=0; j<pncp->nblocks; j++) {
-        for (i=0; i<pncp->blocks[j].nvars; i++)
+        for (i=0; i<pncp->blocks[j].nvars; i++){
             if (pncp->blocks[j].vars[i].shape != NULL)
                 NCI_Free(pncp->blocks[j].vars[i].shape);
+        }
         if (pncp->blocks[j].vars != NULL)
             NCI_Free(pncp->blocks[j].vars);
     }
-
-    NCI_Free(pncp->blocks);
+    if (pncp->blocks != NULL)
+        NCI_Free(pncp->blocks);
     NCI_Free(pncp);
 
     return err;

@@ -121,7 +121,7 @@ ncmpi_def_var(int         ncid,    /* IN:  file ID */
         goto err_check;
     }
     for (i=0; i<ndims; i++) {
-        if (dimids[i] < 0 || pncp->ndims == 0 || dimids[i] >= pncp->ndims) {
+        if (dimids[i] < 0 || pncp->blocks[blkid].ndims == 0 || dimids[i] >= pncp->blocks[blkid].ndims) {
             DEBUG_ASSIGN_ERROR(err, NC_EBADDIM)
             goto err_check;
         }
