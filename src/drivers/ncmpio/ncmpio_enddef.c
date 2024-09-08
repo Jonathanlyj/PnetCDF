@@ -889,9 +889,9 @@ write_NC(NC *ncp)
         TRACE_IO(MPI_File_set_view)(ncp->collective_fh, 0, MPI_BYTE, filetype, "native", MPI_INFO_NULL);
         MPI_Type_free(&filetype);
         if (fIsSet(ncp->flags, NC_HCOLL)) 
-            TRACE_IO(MPI_File_write_at_all_c)(ncp->collective_fh, 0, local_bufs[0], 1, memtype, &mpistatus);
+            TRACE_IO(MPI_File_write_at_all)(ncp->collective_fh, 0, local_bufs[0], 1, memtype, &mpistatus);
         else
-            TRACE_IO(MPI_File_write_at_c)(ncp->collective_fh, 0, local_bufs[0], 1, memtype, &mpistatus);
+            TRACE_IO(MPI_File_write_at)(ncp->collective_fh, 0, local_bufs[0], 1, memtype, &mpistatus);
         MPI_Type_free(&memtype);
         for (int i = 0; i < num_blocks_w; i++) NCI_Free(local_bufs[i]);
         NCI_Free(local_bufs);
@@ -903,7 +903,7 @@ write_NC(NC *ncp)
         TRACE_IO(MPI_File_set_view)(ncp->collective_fh, 0, MPI_BYTE, emptytype, "native", MPI_INFO_NULL);
         MPI_Type_free(&emptytype);
         if (fIsSet(ncp->flags, NC_HCOLL))
-            TRACE_IO(MPI_File_write_at_all_c)(ncp->collective_fh, 0, NULL, 0, MPI_BYTE, &mpistatus);
+            TRACE_IO(MPI_File_write_at_all)(ncp->collective_fh, 0, NULL, 0, MPI_BYTE, &mpistatus);
     }
         
         
