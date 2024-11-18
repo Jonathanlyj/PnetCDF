@@ -556,7 +556,7 @@ extern int
 hdr_put_NC_name(bufferinfo *pbp, const char *name);
 
 extern int
-hdr_get_NC_modified_blockarray(bufferinfo *pbp, NC_blockarray *ncpb, int src_rank, int *new_block_offsets);
+hdr_get_NC_modified_blockarray(bufferinfo *pbp, NC *ncp, int src_rank, int *new_block_offsets);
 
 extern int
 hdr_get_NC_name(bufferinfo *gbp, char **namep, size_t *name_len);

@@ -386,7 +386,7 @@ static int deserialize_bufferinfo_array(NC *ncp, void *buf, int *recv_displs, in
         if (i != rank){
             //only new blockarrays need to be used to update the blockarray
             //don't overwrite the existing local block - otherwise the block content is lost
-            err = hdr_get_NC_modified_blockarray(&recvbuff, &ncp->blocks, i, new_block_offsets);
+            err = hdr_get_NC_modified_blockarray(&recvbuff, ncp, i, new_block_offsets);
             if (err != NC_NOERR) {
                 return err;
             }
@@ -397,11 +397,12 @@ static int deserialize_bufferinfo_array(NC *ncp, void *buf, int *recv_displs, in
 }
 /*--------------< hdr_get_NC_modified_blockarray() >----------------------------------------------*/
 int
-hdr_get_NC_modified_blockarray(bufferinfo *pbp, NC_blockarray *ncpb, int src_rank, int *new_block_offsets) {
+hdr_get_NC_modified_blockarray(bufferinfo *pbp, NC *ncp, int src_rank, int *new_block_offsets) {
     int i, status;
     uint32_t nelems;
     uint64_t nelems64;
 
+    NC_blockarray *ncpb = &ncp->blocks;
     assert(pbp != NULL);
     assert(ncpb != NULL);
 
@@ -437,21 +438,36 @@ hdr_get_NC_modified_blockarray(bufferinfo *pbp, NC_blockarray *ncpb, int src_ran
         uint32_t block_id;
         status = ncmpix_get_uint32((const void**)(&pbp->pos), &block_id);
         if (status != NC_NOERR) return status;
-        if (block_id < ncpb->nread){
+        if (block_id < ncpb->nread){//modified existing block
             block_index = (int)block_id;
             if (ncpb->value[block_index]->modified) {
-                //Two process modified the same block, should error our
-                return NC_EINVAL;
+                //Two process modified the same block, should error out
+                DEBUG_ASSIGN_ERROR(status, NC_EINVAL)
             }
-        }else{
+        }else{//new block
             block_index = (int)block_id + new_block_offsets[src_rank];
         }
-
+        if (status != NC_NOERR) return status;
         // Read block name
         char *block_name;
         size_t block_name_len;
+        char *nname=NULL;  /* normalized name */
+
         status = hdr_get_NC_name(pbp, &block_name, &block_name_len);
         if (status != NC_NOERR) return status;
+        /* create a normalized character string */
+        status = ncmpii_utf8_normalize(block_name, &nname);
+        if (status != NC_NOERR) return status;
+        if (block_id >= ncpb->nread){
+        /* for new block: check if the name string is previously used */
+            status = ncmpio_inq_blkid(ncp, block_name, NULL);
+            if (status != NC_EBADBLK) {
+                DEBUG_ASSIGN_ERROR(status, NC_EBADBLK)
+            }
+            else status = NC_NOERR;
+        }
+        if (status != NC_NOERR) return status;
+    
         NC_block *blockp = (NC_block *)NCI_Malloc(sizeof(NC_block));
         blockp->vars.ndefined = 0;
         blockp->vars.value = NULL;
@@ -459,8 +475,9 @@ hdr_get_NC_modified_blockarray(bufferinfo *pbp, NC_blockarray *ncpb, int src_ran
         blockp->dims.ndefined = 0;
         blockp->dims.value = NULL;
         blockp->dims.nameT = NULL;
-        blockp->name = block_name;
+        blockp->name = nname;
         blockp->name_len = block_name_len;
+
 
         // Read block size
         uint32_t block_size;
@@ -482,6 +499,14 @@ hdr_get_NC_modified_blockarray(bufferinfo *pbp, NC_blockarray *ncpb, int src_ran
         // Modified blocks from other processes, not by the current process
         blockp->modified = 0;  
         
+        #ifndef SEARCH_NAME_LINEARLY
+            /* allocate hashing lookup table, if not allocated yet */
+            if (ncp->blocks.nameT == NULL)
+                ncp->blocks.nameT = NCI_Calloc(ncp->blocks.hash_size, sizeof(NC_nametable));
+
+            /* insert nname to the lookup table */
+            ncmpio_hash_insert(ncp->blocks.nameT, ncp->blocks.hash_size, nname, block_index);
+        #endif
         ncpb->value[block_index] = blockp;
         
     }
@@ -1658,6 +1683,7 @@ ncmpio__enddef(void       *ncdp,
 
     //STEP4: Deseralize buffer to global block array (only name and block size info)
     err = deserialize_bufferinfo_array(ncp, all_collections_buffer, recv_displs, new_block_offsets, total_recv_size, nproc, rank);
+    CHECK_ERROR(err)
     // if (rank == 1) printf("\nbefore comm rank %d: ncp->blocks.value[0]->vars.ndefined: %d\n", rank, ncp->blocks.value[0]->vars.ndefined);
 
     ncp->blocks.ndefined = new_total;
