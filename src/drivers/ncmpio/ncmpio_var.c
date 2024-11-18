@@ -214,11 +214,14 @@ ncmpio_dup_NC_vararray(NC_vararray       *ncap,
 #ifndef SEARCH_NAME_LINEARLY
     /* allocate hashing lookup table, if not allocated yet */
     ncap->hash_size = ref->hash_size;
-    if (ncap->nameT == NULL)
-        ncap->nameT = NCI_Calloc(ncap->hash_size, sizeof(NC_nametable));
-    
-    /* duplicate var name lookup table */
-    ncmpio_hash_table_copy(ncap->nameT, ref->nameT, ncap->hash_size);
+    if (ref->nameT != NULL) {
+        if (ncap->nameT == NULL)
+            ncap->nameT = NCI_Calloc(ncap->hash_size, sizeof(NC_nametable));
+        
+        /* duplicate var name lookup table */
+        ncmpio_hash_table_copy(ncap->nameT, ref->nameT, ncap->hash_size);
+    }
+
 #endif
 
     return NC_NOERR;
@@ -471,12 +474,12 @@ err_check:
 #ifndef SEARCH_NAME_LINEARLY
     varp->attrs.hash_size = ncp->hash_size_attr;
 
-    /* allocate hashing lookup table, if not allocated yet */
-    if (ncp->vars.nameT == NULL)
-        ncp->vars.nameT = NCI_Calloc(ncp->vars.hash_size, sizeof(NC_nametable));
+    // /* allocate hashing lookup table, if not allocated yet */
+    // if (ncp->vars.nameT == NULL)
+    //     ncp->vars.nameT = NCI_Calloc(ncp->vars.hash_size, sizeof(NC_nametable));
 
-    /* insert nname to the lookup table */
-    ncmpio_hash_insert(ncp->vars.nameT, ncp->vars.hash_size, nname, varp->varid);
+    // /* insert nname to the lookup table */
+    // ncmpio_hash_insert(ncp->vars.nameT, ncp->vars.hash_size, nname, varp->varid);
 #endif
 
     if (varidp != NULL) *varidp = varp->varid;

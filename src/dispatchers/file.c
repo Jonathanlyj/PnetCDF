@@ -418,8 +418,10 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
                         goto err_check;
                     }
                     //check type and ndims
+
                     nc_type old_xtype = ncp->vars.value[varid]->xtype;
                     int old_ndims = ncp->vars.value[varid]->ndims;
+
                     if (hdr_data->vars.value[i]->xtype == old_xtype && hdr_data->vars.value[i]->ndims == old_ndims){
                         //check ndimid
                         for(int k=0; k< old_ndims;k++){
