@@ -122,7 +122,8 @@ ncmpio_close(void *ncdp)
 {
     int err=NC_NOERR, status=NC_NOERR;
     NC *ncp = (NC*)ncdp;
-    
+
+
     if (NC_indef(ncp)) { /* currently in define mode */
         status = ncmpio__enddef(ncp, 0, 0, 0, 0); /* TODO: defaults */
 
@@ -244,8 +245,14 @@ ncmpio_close(void *ncdp)
 //     }
 
     /* free up space occupied by the header metadata */
-    
+    int myrank;
+    MPI_Comm_rank(ncp->comm, &myrank);
+    double start_timer = MPI_Wtime();
     ncmpio_free_NC(ncp);
+    double free_time = MPI_Wtime() - start_timer;
+    if (myrank == 0) {
+        printf("\nFree ncp time: %f", free_time);
+    }
 
     return status;
 }
