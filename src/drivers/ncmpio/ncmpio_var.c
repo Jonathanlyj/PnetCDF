@@ -131,7 +131,8 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
     int i;
 
     assert(ncap != NULL);
-
+    printf("var ncap->ndefined: %d\n", ncap->ndefined);
+    int old_free_counter = free_counter;
     if (ncap->value != NULL) {
         /* when error is detected reading NC_VARIABLE tag, ncap->ndefined can
          * be > 0 and ncap->value is still NULL
@@ -139,12 +140,17 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
         for (i=0; i<ncap->ndefined; i++) {
             if (ncap->value[i] != NULL)
                 ncmpio_free_NC_var(ncap->value[i]);
+            if (i==0)
+                printf("number of frees after 1st free var: %d\n", free_counter - old_free_counter);
+            if (i==100)
+                printf("number of frees after 101st free var: %d\n", free_counter - old_free_counter);
         }
-        printf("ncap->ndefined: %d\n", ncap->ndefined);
+        // printf("ncap->ndefined: %d\n", ncap->ndefined);
         NCI_Free(ncap->value);
         ncap->value    = NULL;
     }
     ncap->ndefined = 0;
+    printf("number of frees after free var: %d\n", free_counter);
 
 #ifndef SEARCH_NAME_LINEARLY
     /* free space allocated for var name lookup table */
