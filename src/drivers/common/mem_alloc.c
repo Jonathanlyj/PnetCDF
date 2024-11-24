@@ -61,6 +61,9 @@ void ncmpii_init_malloc_tracing(void)
 }
 #endif
 
+
+
+
 typedef struct {
     void   *self;
     void   *buf;
@@ -277,6 +280,7 @@ void NCI_Free_fn(void       *ptr,
 #ifdef PNC_MALLOC_TRACE
     ncmpii_del_mem_entry(ptr);
 #endif
+    free_counter++;
     free(ptr);
 }
 

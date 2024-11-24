@@ -31,6 +31,8 @@
 #ifdef ENABLE_SUBFILING
 #include "ncmpio_subfile.h"
 #endif
+
+int free_counter = 0;
 int cls_counter = 0;
 /*----< ncmpio_free_NC() >----------------------------------------------------*/
 void
