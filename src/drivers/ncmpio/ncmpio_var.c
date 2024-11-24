@@ -140,7 +140,7 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
             if (ncap->value[i] != NULL)
                 ncmpio_free_NC_var(ncap->value[i]);
         }
-        printf("ncap->ndefined: %d\n", ncap->ndefined);
+
         NCI_Free(ncap->value);
         NCI_Free(ncap->localids);
         NCI_Free(ncap->indexes);
@@ -150,7 +150,7 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
     }
     ncap->ndefined = 0;
     ncap->nread = 0;
-
+    printf("free_counter after free array: %d\n", free_counter);
 #ifndef SEARCH_NAME_LINEARLY
     /* free space allocated for var name lookup table */
     if (ncap->nameT != NULL) {
