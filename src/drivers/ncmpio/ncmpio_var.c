@@ -140,6 +140,7 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
             if (ncap->value[i] != NULL)
                 ncmpio_free_NC_var(ncap->value[i]);
         }
+        printf("ncap->ndefined: %d\n", ncap->ndefined);
         NCI_Free(ncap->value);
         NCI_Free(ncap->localids);
         NCI_Free(ncap->indexes);
