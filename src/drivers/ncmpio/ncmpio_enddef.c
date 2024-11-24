@@ -820,6 +820,8 @@ write_NC(NC *ncp)
          */
         memset(&mpistatus, 0, sizeof(MPI_Status));
 
+
+        double start_write = MPI_Wtime();
         /* write the header in chunks */
         offset = 0;
         remain = global_header_wlen;
@@ -931,6 +933,9 @@ write_NC(NC *ncp)
             TRACE_IO(MPI_File_write_at_all)(ncp->collective_fh, 0, NULL, 0, MPI_BYTE, &mpistatus);
     }
         
+    double write_time = MPI_Wtime() - start_write;
+
+    if (rank == 0) printf("\nInside ncmpi_enddef mpi write time: %f", write_time);
         
     
 
