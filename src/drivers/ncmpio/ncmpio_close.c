@@ -32,6 +32,8 @@
 #include "ncmpio_subfile.h"
 #endif
 
+int free_counter = 0;
+
 /*----< ncmpio_free_NC() >----------------------------------------------------*/
 void
 ncmpio_free_NC(NC *ncp)
@@ -214,7 +216,16 @@ ncmpio_close(void *ncdp)
     }
 
     /* free up space occupied by the header metadata */
+    double free_time_start = MPI_Wtime();
+    free_counter = 0;
     ncmpio_free_NC(ncp);
+    double free_time = MPI_Wtime() - free_time_start;
+    int rank;
+    MPI_Comm_rank(ncp->comm, &rank);
+    if (rank == 0){
+        printf("ncmpio_free_NC time: %f\n", free_time);
+        printf("ncmpio_free_NC free() count: %d\n", free_counter);
+    }
 
     return status;
 }

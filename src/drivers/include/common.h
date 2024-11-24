@@ -53,6 +53,8 @@
      (xtype == NC_UBYTE && itype == MPI_UNSIGNED_CHAR)) ? 0 : 1
 #endif
 
+extern int free_counter;
+
 extern void *
 NCI_Malloc_fn(size_t size, const int lineno, const char *func,
               const char *filename);
@@ -68,6 +70,8 @@ NCI_Realloc_fn(void *ptr, size_t size, const int lineno, const char *func,
 extern void
 NCI_Free_fn(void *ptr, const int lineno, const char *func,
             const char *filename);
+
+
 
 #define NCI_Malloc(a)    NCI_Malloc_fn(a,__LINE__,__func__,__FILE__)
 #define NCI_Calloc(a,b)  NCI_Calloc_fn(a,b,__LINE__,__func__,__FILE__)
