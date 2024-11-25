@@ -152,6 +152,7 @@ ncmpio_free_NC_dimarray(NC_dimarray *ncap)
     ncap->ndefined = 0;
     ncap->nread = 0;
     start_time = MPI_Wtime();
+    // printf("dimarray ncap->hash_size: %d\n", ncap->hash_size);
 #ifndef SEARCH_NAME_LINEARLY
     /* free space allocated for dim name lookup table */
     if (ncap->nameT != NULL) {

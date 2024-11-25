@@ -143,7 +143,8 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
     // printf("var ncap->ndefined: %d\n", ncap->ndefined);
     int old_free_counter = free_counter;
     // first_var = 1;
-    double start_time = MPI_Wtime();
+    double start_time, free_var_array_time, free_var_extra_time, free_var_hash_time;
+    start_time = MPI_Wtime();
     if (ncap->value != NULL) {
         /* when error is detected reading NC_VARIABLE tag, ncap->ndefined can
          * be > 0 and ncap->value is still NULL
@@ -158,19 +159,21 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
         }
 
         NCI_Free(ncap->value);
-        double free_var_array_time = MPI_Wtime() - start_time;
+        free_var_array_time = MPI_Wtime() - start_time;
         start_time = MPI_Wtime();
         NCI_Free(ncap->localids);
         NCI_Free(ncap->indexes);
         ncap->localids = NULL;
         ncap->indexes = NULL;
         ncap->value    = NULL;
-        double free_var_extra_time = MPI_Wtime() - start_time;
+        free_var_extra_time = MPI_Wtime() - start_time;
         // printf("free_var_array_time: %f, free_var_extra_time: %f\n", free_var_array_time, free_var_extra_time);
     }
     ncap->ndefined = 0;
     ncap->nread = 0;
     // printf("free_counter after free var array: %d\n", free_counter);
+    start_time = MPI_Wtime();
+    // printf("vararray ncap->hash_size: %d\n", ncap->hash_size);
 #ifndef SEARCH_NAME_LINEARLY
     /* free space allocated for var name lookup table */
     if (ncap->nameT != NULL) {
@@ -180,6 +183,8 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
         ncap->hash_size = 0;
     }
 #endif
+    free_var_hash_time = MPI_Wtime() - start_time;
+    printf("free_var_array_time: %f, free_var_extra_time: %f, free_var_hash_time: %f\n", free_var_array_time, free_var_extra_time, free_var_hash_time);
 }
 
 /*----< ncmpio_dup_NC_vararray() >-------------------------------------------*/
