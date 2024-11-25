@@ -558,10 +558,13 @@ static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const
         ncp->vars.value[att_vid]->attrs.ndefined = nattrs;
         size_t alloc_size = _RNDUP(nattrs, PNC_VATTR_ARRAY_GROWBY);
         alloc_size = 0;
-
-        ncp->vars.value[att_vid]->attrs.value = (NC_attr**) NCI_Calloc(alloc_size, sizeof(NC_attr*));
-        if (ncp->vars.value[att_vid]->attrs.value == NULL) DEBUG_RETURN_ERROR(NC_ENOMEM)
-
+        if (nattrs > 0){
+            ncp->vars.value[att_vid]->attrs.value = (NC_attr**) NCI_Calloc(alloc_size, sizeof(NC_attr*));
+            if (ncp->vars.value[att_vid]->attrs.value == NULL) DEBUG_RETURN_ERROR(NC_ENOMEM)
+        }
+        else
+            ncp->vars.value[att_vid]->attrs.value = NULL;
+        
         for(k=0; k<nattrs; k++){
             NC_attr *attrp=NULL;
             att_namelen = hdr_data->vars.value[i]->attrs.value[k]->name_len;

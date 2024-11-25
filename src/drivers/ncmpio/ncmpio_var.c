@@ -32,24 +32,33 @@
 #include <ncx.h>
 #include "ncmpio_NC.h"
 
+int first_var = 1;
+
 /*----< ncmpio_free_NC_var() >-----------------------------------------------*/
 /* Free NC_var object */
 void
 ncmpio_free_NC_var(NC_var *varp)
 {
     if (varp == NULL) return;
+    int old_free_counter = free_counter;
 
     ncmpio_free_NC_attrarray(&varp->attrs);
+    // if (first_var)
+    //     printf("1st var: free_counter after free ncmpio_free_NC_attrarray: %d\n", free_counter - old_free_counter);
     NCI_Free(varp->name);
 #ifdef ENABLE_SUBFILING
     if (varp->num_subfiles > 1) /* deallocate it */
         NCI_Free(varp->dimids_org);
 #endif
+    // if (first_var)
+    //     printf("1st var: free_counter after free varp->name: %d\n", free_counter - old_free_counter);
     if (varp->shape  != NULL) NCI_Free(varp->shape);
     if (varp->dsizes != NULL) NCI_Free(varp->dsizes);
     if (varp->dimids != NULL) NCI_Free(varp->dimids);
-
+    // if (first_var)
+    //     first_var = 0;
     NCI_Free(varp);
+
 }
 
 /*----< ncmpio_new_NC_var() >------------------------------------------------*/
@@ -131,7 +140,10 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
     int i;
 
     assert(ncap != NULL);
-
+    // printf("var ncap->ndefined: %d\n", ncap->ndefined);
+    int old_free_counter = free_counter;
+    // first_var = 1;
+    double start_time = MPI_Wtime();
     if (ncap->value != NULL) {
         /* when error is detected reading NC_VARIABLE tag, ncap->ndefined can
          * be > 0 and ncap->value is still NULL
@@ -139,18 +151,26 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
         for (i=0; i<ncap->ndefined; i++) {
             if (ncap->value[i] != NULL)
                 ncmpio_free_NC_var(ncap->value[i]);
+            // if (i==0)
+                // printf("number of frees after 1st free var: %d\n", free_counter - old_free_counter);
+            // if (i==100)
+                // printf("number of frees after 101st free var: %d\n", free_counter - old_free_counter);
         }
 
         NCI_Free(ncap->value);
+        double free_var_array_time = MPI_Wtime() - start_time;
+        start_time = MPI_Wtime();
         NCI_Free(ncap->localids);
         NCI_Free(ncap->indexes);
         ncap->localids = NULL;
         ncap->indexes = NULL;
         ncap->value    = NULL;
+        double free_var_extra_time = MPI_Wtime() - start_time;
+        // printf("free_var_array_time: %f, free_var_extra_time: %f\n", free_var_array_time, free_var_extra_time);
     }
     ncap->ndefined = 0;
     ncap->nread = 0;
-    printf("free_counter after free array: %d\n", free_counter);
+    // printf("free_counter after free var array: %d\n", free_counter);
 #ifndef SEARCH_NAME_LINEARLY
     /* free space allocated for var name lookup table */
     if (ncap->nameT != NULL) {

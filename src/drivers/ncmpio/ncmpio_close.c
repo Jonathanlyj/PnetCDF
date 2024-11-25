@@ -40,20 +40,25 @@ ncmpio_free_NC(NC *ncp)
 {
     int rank;
     MPI_Comm_rank(ncp->comm, &rank);
+    double start_time = MPI_Wtime();
 
     if (ncp == NULL) return;
     
     ncmpio_free_NC_dimarray(&ncp->dims);
-    if (rank == 0)
-        printf("ncmpio_free_NC free() count after ncmpio_free_NC_dimarray: %d\n", free_counter);
-    
+    // if (rank == 0)
+    //     printf("ncmpio_free_NC free() count after ncmpio_free_NC_dimarray: %d\n", free_counter);
+    double dim_free_time = MPI_Wtime() - start_time;
     ncmpio_free_NC_attrarray(&ncp->attrs);
-    if (rank == 0)
-        printf("ncmpio_free_NC free() count after ncmpio_free_NC_attarray: %d\n", free_counter);
+    // if (rank == 0)
+    //     printf("ncmpio_free_NC free() count after ncmpio_free_NC_attarray: %d\n", free_counter);
+    start_time = MPI_Wtime();
     ncmpio_free_NC_vararray(&ncp->vars);
+    
+    // if (rank == 0)
+    //     printf("ncmpio_free_NC free() count after ncmpio_free_NC_vararray: %d\n", free_counter);
+    double var_free_time = MPI_Wtime() - start_time;
     if (rank == 0)
-        printf("ncmpio_free_NC free() count after ncmpio_free_NC_vararray: %d\n", free_counter);
-
+        printf("dim_free_time: %f, var_free_time: %f\n", dim_free_time, var_free_time);
     /* The only case that ncp->mpiinfo is MPI_INFO_NULL is when exiting endef
      * from a redef. All other cases reaching here are from ncmpi_close, in
      * which case ncp->mpiinfo is never MPI_INFO_NULL.
