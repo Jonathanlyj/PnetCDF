@@ -44,15 +44,15 @@ ncmpio_free_NC(NC *ncp)
     if (ncp == NULL) return;
     
     ncmpio_free_NC_dimarray(&ncp->dims);
-    if (rank == 0)
-        printf("ncmpio_free_NC free() count after ncmpio_free_NC_dimarray: %d\n", free_counter);
+    // if (rank == 0)
+    //     printf("ncmpio_free_NC free() count after ncmpio_free_NC_dimarray: %d\n", free_counter);
     
-    ncmpio_free_NC_attrarray(&ncp->attrs);
-    if (rank == 0)
-        printf("ncmpio_free_NC free() count after ncmpio_free_NC_attarray: %d\n", free_counter);
+    // ncmpio_free_NC_attrarray(&ncp->attrs);
+    // if (rank == 0)
+    //     printf("ncmpio_free_NC free() count after ncmpio_free_NC_attarray: %d\n", free_counter);
     ncmpio_free_NC_vararray(&ncp->vars);
-    if (rank == 0)
-        printf("ncmpio_free_NC free() count after ncmpio_free_NC_vararray: %d\n", free_counter);
+    // if (rank == 0)
+    //     printf("ncmpio_free_NC free() count after ncmpio_free_NC_vararray: %d\n", free_counter);
 
     /* The only case that ncp->mpiinfo is MPI_INFO_NULL is when exiting endef
      * from a redef. All other cases reaching here are from ncmpi_close, in
