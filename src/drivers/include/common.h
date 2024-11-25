@@ -53,7 +53,7 @@
      (xtype == NC_UBYTE && itype == MPI_UNSIGNED_CHAR)) ? 0 : 1
 #endif
 
-extern int free_counter;
+// extern int free_counter;
 
 extern void *
 NCI_Malloc_fn(size_t size, const int lineno, const char *func,

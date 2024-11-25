@@ -280,7 +280,7 @@ void NCI_Free_fn(void       *ptr,
 #ifdef PNC_MALLOC_TRACE
     ncmpii_del_mem_entry(ptr);
 #endif
-    free_counter++;
+    // free_counter++;
     free(ptr);
 }
 
