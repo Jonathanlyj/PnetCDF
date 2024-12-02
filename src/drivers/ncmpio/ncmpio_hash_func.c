@@ -316,9 +316,10 @@ ncmpio_hash_table_free(NC_nametable *nameT, int hash_size)
 {
     int i;
     for (i=0; i<hash_size; i++) {
-        if (nameT[i].num > 0)
+        if (nameT[i].num > 0){
             NCI_Free(nameT[i].list);
             cls_counter += nameT[i].num - 1;
+        }
         nameT[i].num = 0;
     }
 }
