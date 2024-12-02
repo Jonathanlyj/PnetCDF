@@ -100,6 +100,8 @@ static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
         file_info->xsz += sizeof(uint32_t) + sizeof(char) * dim_info->name_len; // dim name
         file_info->xsz += sizeof(uint32_t); //size
     }
+
+    ncmpio_free_NC_dimarray(&ncp->dims);
     // Variables
     file_info->vars.ndefined = ncp->vars.ndefined; 
     file_info->vars.value = (hdr_var **)NCI_Malloc(file_info->vars.ndefined * sizeof(hdr_var *));
@@ -147,9 +149,8 @@ static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
             }
         file_info->vars.value[i] = var_info;
 
-        }
-
-
+    }
+    ncmpio_free_NC_vararray(&ncp->vars);
     return err;
 }
 
@@ -1589,13 +1590,30 @@ ncmpi_enddef(int ncid) {
     }
     else if (err != NC_NOERR) return err; /* fatal error */
 
+
     /* ---------------------------------------------- META: serilize local metadata to buffer----------------------------------------------*/
+
+    //Duplicate old header dim array here
+    NC *ncp=(NC*)pncp->ncp;
+    NC_dimarray *old_dimarray = NCI_Malloc(sizeof(NC_dimarray));
+    NC_vararray *old_vararray = NCI_Malloc(sizeof(NC_vararray));
+    old_dimarray->nameT = NULL;
+    old_vararray->nameT = NULL;
+    err = shallow_dup_NC_dimarray(old_dimarray, &ncp->dims);
+    if (err != NC_NOERR) return err;
+
+    err = shallow_dup_NC_vararray(old_vararray, &ncp->vars, ncp->hash_size_attr);
+    if (err != NC_NOERR) return err;
+    
+    // ncmpio_free_NC_dimarray(&ncp->dims);
+    // ncmpio_free_NC_vararray(&ncp->vars);
     struct hdr local_hdr;
     err = baseline_extract_meta(pncp->ncp, &local_hdr);
 
     int rank, size;
     MPI_Comm_rank(pncp->comm, &rank);
     MPI_Comm_size(pncp->comm, &size);
+
     // if (rank > 1){
     // for (int i = 0; i < local_hdr.dims.ndefined; i++) {
     //     printf("rank %d:  Name: %s, Size: %lld\n", rank,  local_hdr.dims.value[i]->name, local_hdr.dims.value[i]->size);
@@ -1621,6 +1639,8 @@ ncmpi_enddef(int ncid) {
     // if (rank == 0)
     //     printf("local_hdr size/MB: %d\n", local_hdr.xsz/1048576);
     err = serialize_hdr(&local_hdr, send_buffer);
+    free_hdr_vararray(&local_hdr.vars);
+    free_hdr_dimarray(&local_hdr.dims);
 
     /* ---------------------------------------------- META: Communicate metadata size----------------------------------------------*/
 
@@ -1650,8 +1670,6 @@ ncmpi_enddef(int ncid) {
     // Phase 2: Communicate the actual header data
     // Before MPI_Allgatherv
     TRACE_COMM(MPI_Allgatherv)(send_buffer, local_hdr.xsz, MPI_BYTE, all_collections_buffer, recvcounts, recv_displs, MPI_BYTE, pncp->comm);
-    free_hdr_vararray(&local_hdr.vars);
-    free_hdr_dimarray(&local_hdr.dims);
     NCI_Free(send_buffer);
 
   /* ---------------------------------------------- META: Deseralize metadata ----------------------------------------------*/
@@ -1663,20 +1681,7 @@ ncmpi_enddef(int ncid) {
     // ncdims->ndefined = 0;
     // ncdims->unlimited_id = -1;
     // ncvars->ndefined = 0;
-    //Duplicate old header dim array here
-    NC *ncp=(NC*)pncp->ncp;
-    NC_dimarray *old_dimarray = NCI_Malloc(sizeof(NC_dimarray));
-    NC_vararray *old_vararray = NCI_Malloc(sizeof(NC_vararray));
-    old_dimarray->nameT = NULL;
-    old_vararray->nameT = NULL;
-    err = shallow_dup_NC_dimarray(old_dimarray, &ncp->dims);
-    if (err != NC_NOERR) return err;
 
-    err = shallow_dup_NC_vararray(old_vararray, &ncp->vars, ncp->hash_size_attr);
-    if (err != NC_NOERR) return err;
-    
-    ncmpio_free_NC_dimarray(&ncp->dims);
-    ncmpio_free_NC_vararray(&ncp->vars);
     ncp->dims.hash_size = old_dimarray->hash_size;
     ncp->vars.hash_size = old_vararray->hash_size;
     //reset pncp var array object
@@ -1700,9 +1705,7 @@ ncmpi_enddef(int ncid) {
         // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
         deserialize_hdr(recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
         err = add_hdr(recv_hdr, i, rank, pncp, old_dimarray, old_vararray);
-        err = ncmpi_inq_malloc_max_size(&malloc_size);
         free_hdr(recv_hdr);
-        err = ncmpi_inq_malloc_max_size(&malloc_size);
         if (err != NC_NOERR) return err;
     }
     NCI_Free(all_collections_buffer);
