@@ -31,7 +31,7 @@
 #ifdef ENABLE_SUBFILING
 #include "ncmpio_subfile.h"
 #endif
-
+int cls_counter = 0;
 /*----< ncmpio_free_NC() >----------------------------------------------------*/
 void
 ncmpio_free_NC(NC *ncp)
@@ -214,7 +214,13 @@ ncmpio_close(void *ncdp)
     }
 
     /* free up space occupied by the header metadata */
+    int rank;
+    MPI_Comm_rank(ncp->comm, &rank);
+    cls_counter = 0;
     ncmpio_free_NC(ncp);
+    if (rank == 0){
+        printf("cls_counter: %d\n", cls_counter);   
+    }
 
     return status;
 }

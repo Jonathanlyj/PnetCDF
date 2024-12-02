@@ -74,6 +74,8 @@ NCI_Free_fn(void *ptr, const int lineno, const char *func,
 #define NCI_Realloc(a,b) NCI_Realloc_fn(a,b,__LINE__,__func__,__FILE__)
 #define NCI_Free(a)      NCI_Free_fn(a,__LINE__,__func__,__FILE__)
 
+extern int cls_counter;
+
 extern int
 ncmpii_inq_malloc_size(size_t *size);
 
