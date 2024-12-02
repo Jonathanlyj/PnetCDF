@@ -1439,6 +1439,98 @@ fn_exit:
     return status;
 }
 
+/*----< shallow_dup_NC_dimarray() >-------------------------------------------*/
+int
+shallow_dup_NC_dimarray(NC_dimarray *ncap, const NC_dimarray *ref)
+{
+    int i, status=NC_NOERR;
+
+    assert(ref != NULL);
+    assert(ncap != NULL);
+
+    ncap->value = NULL;
+    /* allocate array of NC_dim objects */
+    if (ref->ndefined > 0) {
+        size_t alloc_size = _RNDUP(ref->ndefined, PNC_ARRAY_GROWBY);
+        ncap->localids = (int*) NCI_Calloc(alloc_size, SIZEOF_INT);
+        // ncap->indexes = (int*) NCI_Calloc(alloc_size, SIZEOF_INT);
+        ncap->indexes = NULL;
+
+    }
+
+    /* duplicate each NC_dim objects */
+    ncap->ndefined = 0;
+    ncap->nread = ref->nread;
+    for (i=0; i<ref->ndefined; i++) {
+        ncap->localids[i] = ref->localids[i];
+        // ncap->indexes[i] = ref->indexes[i];
+        ncap->ndefined++;
+    }
+    
+    assert(ncap->ndefined == ref->ndefined);
+#ifndef SEARCH_NAME_LINEARLY
+    /* allocate hashing lookup table, if not allocated yet */
+    ncap->hash_size = ref->hash_size;
+    ncap->nameT == NULL;
+#endif
+    return NC_NOERR;
+}
+
+
+/*----< shallow_dup_NC_vararray() >-------------------------------------------*/
+int
+shallow_dup_NC_vararray(NC_vararray       *ncap,
+                       const NC_vararray *ref,
+                       int                attr_hsize)
+{
+    int i, status=NC_NOERR;
+    size_t alloc_size;
+
+    assert(ref != NULL);
+    assert(ncap != NULL);
+
+    if (ref->ndefined == 0) {
+        ncap->ndefined = 0;
+        ncap->value = NULL;
+        return NC_NOERR;
+    }
+    ncap->value = NULL;
+
+
+    if (ref->ndefined > 0) {
+        size_t alloc_size = _RNDUP(ref->ndefined, PNC_ARRAY_GROWBY);
+        ncap->localids = (int *)  NCI_Calloc(alloc_size, SIZEOF_INT);
+        // ncap->indexes = (int *)  NCI_Calloc(alloc_size, SIZEOF_INT);
+        ncap->indexes = NULL;
+    }
+
+    /* don't duplicate  NC_var object */
+    ncap->ndefined = 0;
+    ncap->nread = ref->nread;
+    for (i=0; i<ref->ndefined; i++) {
+        ncap->localids[i] = ref->localids[i];
+        // ncap->indexes[i] = ref->indexes[i];
+        ncap->ndefined++;
+    }
+    if (status != NC_NOERR) {
+        ncmpio_free_NC_vararray(ncap);
+        return status;
+    }
+    assert(ncap->ndefined == ref->ndefined);
+
+#ifndef SEARCH_NAME_LINEARLY
+    /* allocate hashing lookup table, if not allocated yet */
+    ncap->hash_size = ref->hash_size;
+    ncap->nameT == NULL;
+#endif
+    return NC_NOERR;
+}
+
+
+
+
+
+
 /*----< ncmpi_close() >------------------------------------------------------*/
 /* This is a collective subroutine. */
 int
@@ -1478,6 +1570,7 @@ ncmpi_close(int ncid)
 int
 ncmpi_enddef(int ncid) {
     int err=NC_NOERR;
+    MPI_Offset malloc_size;
     PNC *pncp;
 
     /* check if ncid is valid */
@@ -1497,10 +1590,9 @@ ncmpi_enddef(int ncid) {
     else if (err != NC_NOERR) return err; /* fatal error */
 
     /* ---------------------------------------------- META: serilize local metadata to buffer----------------------------------------------*/
-    // struct hdr *local_hdr = (struct hdr *)NCI_Malloc(sizeof(struct hdr *));
     struct hdr local_hdr;
     err = baseline_extract_meta(pncp->ncp, &local_hdr);
-    // printf("%s\n", local_hdr->dims.value[0]->name);
+
     int rank, size;
     MPI_Comm_rank(pncp->comm, &rank);
     MPI_Comm_size(pncp->comm, &size);
@@ -1526,6 +1618,8 @@ ncmpi_enddef(int ncid) {
     // }
     // }
     char* send_buffer = (char*) NCI_Malloc(local_hdr.xsz);
+    // if (rank == 0)
+    //     printf("local_hdr size/MB: %d\n", local_hdr.xsz/1048576);
     err = serialize_hdr(&local_hdr, send_buffer);
 
     /* ---------------------------------------------- META: Communicate metadata size----------------------------------------------*/
@@ -1548,6 +1642,7 @@ ncmpi_enddef(int ncid) {
     }
     char* all_collections_buffer = (char*) NCI_Malloc(total_recv_size);
 
+
     int* recvcounts =  (int*)NCI_Malloc(size * sizeof(int));
     for (int i = 0; i < size; ++i) {
         recvcounts[i] = (int)all_collection_sizes[i];
@@ -1557,6 +1652,8 @@ ncmpi_enddef(int ncid) {
     TRACE_COMM(MPI_Allgatherv)(send_buffer, local_hdr.xsz, MPI_BYTE, all_collections_buffer, recvcounts, recv_displs, MPI_BYTE, pncp->comm);
     free_hdr_vararray(&local_hdr.vars);
     free_hdr_dimarray(&local_hdr.dims);
+    NCI_Free(send_buffer);
+
   /* ---------------------------------------------- META: Deseralize metadata ----------------------------------------------*/
 
     if (err != NC_NOERR) return err;
@@ -1572,10 +1669,10 @@ ncmpi_enddef(int ncid) {
     NC_vararray *old_vararray = NCI_Malloc(sizeof(NC_vararray));
     old_dimarray->nameT = NULL;
     old_vararray->nameT = NULL;
-    err = ncmpio_dup_NC_dimarray(old_dimarray, &ncp->dims);
+    err = shallow_dup_NC_dimarray(old_dimarray, &ncp->dims);
     if (err != NC_NOERR) return err;
 
-    err = ncmpio_dup_NC_vararray(old_vararray, &ncp->vars, ncp->hash_size_attr);
+    err = shallow_dup_NC_vararray(old_vararray, &ncp->vars, ncp->hash_size_attr);
     if (err != NC_NOERR) return err;
     
     ncmpio_free_NC_dimarray(&ncp->dims);
@@ -1597,15 +1694,19 @@ ncmpi_enddef(int ncid) {
     // pncp->ncp.dims = *ncdims;
     // pncp->ncp->vars = *ncvars;
 
+
     for (int i = 0; i < size; ++i) {
         struct hdr *recv_hdr = (struct hdr*)NCI_Malloc(sizeof(struct hdr));
         // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
         deserialize_hdr(recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
         err = add_hdr(recv_hdr, i, rank, pncp, old_dimarray, old_vararray);
+        err = ncmpi_inq_malloc_max_size(&malloc_size);
         free_hdr(recv_hdr);
+        err = ncmpi_inq_malloc_max_size(&malloc_size);
         if (err != NC_NOERR) return err;
     }
-    
+    NCI_Free(all_collections_buffer);
+    NCI_Free(all_collection_sizes);
     
     
     // #ifndef SEARCH_NAME_LINEARLY
@@ -1626,14 +1727,10 @@ ncmpi_enddef(int ncid) {
     ncmpio_free_NC_dimarray(old_dimarray);
     ncmpio_free_NC_vararray(old_vararray);
     NCI_Free(old_vararray);
-     NCI_Free(old_dimarray);
+    NCI_Free(old_dimarray);
 
 
 
-
-    NCI_Free(all_collections_buffer);
-    NCI_Free(send_buffer);
-    NCI_Free(all_collection_sizes);
 
 
 
