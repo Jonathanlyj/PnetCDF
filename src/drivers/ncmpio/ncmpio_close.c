@@ -40,19 +40,24 @@ ncmpio_free_NC(NC *ncp)
 {
     int rank;
     MPI_Comm_rank(ncp->comm, &rank);
+    double start_time = MPI_Wtime();
 
     if (ncp == NULL) return;
     
     ncmpio_free_NC_dimarray(&ncp->dims);
     // if (rank == 0)
     //     printf("ncmpio_free_NC free() count after ncmpio_free_NC_dimarray: %d\n", free_counter);
-    
-    // ncmpio_free_NC_attrarray(&ncp->attrs);
+    double dim_free_time = MPI_Wtime() - start_time;
+    ncmpio_free_NC_attrarray(&ncp->attrs);
     // if (rank == 0)
     //     printf("ncmpio_free_NC free() count after ncmpio_free_NC_attarray: %d\n", free_counter);
+    start_time = MPI_Wtime();
     ncmpio_free_NC_vararray(&ncp->vars);
+    double other_start = MPI_Wtime();
+    
     // if (rank == 0)
     //     printf("ncmpio_free_NC free() count after ncmpio_free_NC_vararray: %d\n", free_counter);
+    double var_free_time = MPI_Wtime() - start_time;
 
     /* The only case that ncp->mpiinfo is MPI_INFO_NULL is when exiting endef
      * from a redef. All other cases reaching here are from ncmpi_close, in
@@ -65,7 +70,11 @@ ncmpio_free_NC(NC *ncp)
     if (ncp->abuf     != NULL) NCI_Free(ncp->abuf);
     if (ncp->path     != NULL) NCI_Free(ncp->path);
 
+    double other_free_time = MPI_Wtime() - other_start;
+
     NCI_Free(ncp);
+    if (rank == 0)
+        printf("dim_free_time: %f, var_free_time: %f, other_free_time: %f\n", dim_free_time, var_free_time, other_free_time);
 }
 
 /*----< ncmpio_close_files() >-----------------------------------------------*/
@@ -104,6 +113,7 @@ ncmpio_close(void *ncdp)
 {
     int err=NC_NOERR, status=NC_NOERR;
     NC *ncp = (NC*)ncdp;
+    double close_start = MPI_Wtime();
 
     if (NC_indef(ncp)) { /* currently in define mode */
         status = ncmpio__enddef(ncp, 0, 0, 0, 0); /* TODO: defaults */
