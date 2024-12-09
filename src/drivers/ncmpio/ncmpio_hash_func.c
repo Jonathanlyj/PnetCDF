@@ -318,7 +318,7 @@ ncmpio_hash_table_free(NC_nametable *nameT, int hash_size)
     for (i=0; i<hash_size; i++) {
         if (nameT[i].num > 0){
             NCI_Free(nameT[i].list);
-            cls_counter += nameT[i].num - 1;
+            // cls_counter += nameT[i].num - 1;
         }
         nameT[i].num = 0;
     }

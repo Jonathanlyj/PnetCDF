@@ -230,9 +230,9 @@ ncmpio_close(void *ncdp)
     MPI_Comm_rank(ncp->comm, &rank);
     cls_counter = 0;
     ncmpio_free_NC(ncp);
-    if (rank == 0){
-        printf("cls_counter: %d\n", cls_counter);   
-    }
+    // if (rank == 0){
+    //     printf("cls_counter: %d\n", cls_counter);   
+    // }
 
     return status;
 }
