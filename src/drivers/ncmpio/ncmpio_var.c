@@ -161,13 +161,17 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
         NCI_Free(ncap->value);
         // free_var_array_time = MPI_Wtime() - start_time;
         // start_time = MPI_Wtime();
-        NCI_Free(ncap->localids);
-        NCI_Free(ncap->indexes);
-        ncap->localids = NULL;
-        ncap->indexes = NULL;
         ncap->value    = NULL;
         // free_var_extra_time = MPI_Wtime() - start_time;
         // printf("free_var_array_time: %f, free_var_extra_time: %f\n", free_var_array_time, free_var_extra_time);
+    }
+    if (ncap->localids != NULL) {
+        NCI_Free(ncap->localids);
+        ncap->localids = NULL;
+    }
+    if (ncap->indexes != NULL) {
+        NCI_Free(ncap->indexes);
+        ncap->indexes = NULL;
     }
     ncap->ndefined = 0;
     ncap->nread = 0;

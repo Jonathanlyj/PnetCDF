@@ -141,13 +141,17 @@ ncmpio_free_NC_dimarray(NC_dimarray *ncap)
         NCI_Free(ncap->value);
         // free_dim_array_time = MPI_Wtime() - start_time;
         // start_time = MPI_Wtime();
-        NCI_Free(ncap->localids);
-        NCI_Free(ncap->indexes);
+
         ncap->value = NULL;
-        ncap->localids = NULL;
-        ncap->indexes = NULL;
         // free_dim_extra_time = MPI_Wtime() - start_time;
-        
+    }
+    if (ncap->localids != NULL) {
+        NCI_Free(ncap->localids);
+        ncap->localids = NULL;
+    }
+    if (ncap->indexes != NULL) {
+        NCI_Free(ncap->indexes);
+        ncap->indexes = NULL;
     }
     ncap->ndefined = 0;
     ncap->nread = 0;

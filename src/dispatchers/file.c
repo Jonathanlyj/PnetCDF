@@ -104,8 +104,13 @@ static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
         file_info->xsz += sizeof(uint32_t) + sizeof(char) * dim_info->name_len; // dim name
         file_info->xsz += sizeof(uint32_t); //size
     }
-
+    // if (ncp->dims.localids != NULL) {
+    //     NCI_Free(ncp->dims.localids);
+    //     ncp->dims.localids = NULL;
+    // }
     ncmpio_free_NC_dimarray(&ncp->dims);
+
+
     // Variables
     file_info->vars.ndefined = ncp->vars.ndefined; 
     file_info->vars.value = (hdr_var **)NCI_Malloc(file_info->vars.ndefined * sizeof(hdr_var *));
@@ -154,7 +159,12 @@ static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
         file_info->vars.value[i] = var_info;
 
     }
+    // if (ncp->vars.localids != NULL) {
+    //     NCI_Free(ncp->vars.localids);
+    //     ncp->vars.localids = NULL;
+    // }
     ncmpio_free_NC_vararray(&ncp->vars);
+
     return err;
 }
 
@@ -743,15 +753,16 @@ pnetcdf_check_crt_mem(MPI_Comm comm, int checkpoint)
     err = ncmpi_inq_malloc_size(&malloc_size);
     if (err == NC_NOERR) {
         // MPI_Reduce(&malloc_size, &sum_size, 1, MPI_OFFSET, MPI_SUM, 0, MPI_COMM_WORLD);
-        if (rank == 0){
+        if (rank == 1){
             // printf("checkpoint 0-%d: total current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
             //        checkpoint, (float)sum_size /1048576);
-            printf("checkpoint 0-%d: rank 0 current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
-                   checkpoint, malloc_size, (float)malloc_size /1048576);
-        }else if (rank == 1){
             printf("checkpoint 0-%d: rank 1 current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
                    checkpoint, malloc_size, (float)malloc_size /1048576);
         }
+        // }else if (rank == 1){
+        //     printf("checkpoint 0-%d: rank 1 current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
+        //            checkpoint, malloc_size, (float)malloc_size /1048576);
+        // }
     }
     else if (err != NC_ENOTENABLED) {
         printf("Error at %s:%d: %s\n", __FILE__,__LINE__,ncmpi_strerror(err));
@@ -1627,7 +1638,7 @@ ncmpi_enddef(int ncid) {
     }
     else if (err != NC_NOERR) return err; /* fatal error */
 
-    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 0);
+
     /* ---------------------------------------------- META: serilize local metadata to buffer----------------------------------------------*/
 
     //Duplicate old header dim array here
@@ -1642,10 +1653,10 @@ ncmpi_enddef(int ncid) {
     err = shallow_dup_NC_vararray(old_vararray, &ncp->vars, ncp->hash_size_attr);
     if (err != NC_NOERR) return err;
     
-    // ncmpio_free_NC_dimarray(&ncp->dims);
-    // ncmpio_free_NC_vararray(&ncp->vars);
+    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 0); 
     struct hdr local_hdr;
-    err = baseline_extract_meta(pncp->ncp, &local_hdr);
+    err = baseline_extract_meta(pncp->ncp, &local_hdr); // this step also frees the dims and vars in ncp
+    
 
     int rank, size;
     MPI_Comm_rank(pncp->comm, &rank);
@@ -1674,19 +1685,23 @@ ncmpi_enddef(int ncid) {
     //     }
     // }
     // }
+    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 1);
     char* send_buffer = (char*) NCI_Malloc(local_hdr.xsz);
     // if (rank == 0)
     //     printf("local_hdr size/MB: %d\n", local_hdr.xsz/1048576);
+    
     err = serialize_hdr(&local_hdr, send_buffer);
-    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 1);
+    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 2);
+    
     free_hdr_vararray(&local_hdr.vars);
     free_hdr_dimarray(&local_hdr.dims);
-    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 2);
-
+   
+    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 3);
     /* ---------------------------------------------- META: Communicate metadata size----------------------------------------------*/
 
   // Phase 1: Communicate the sizes of the header structure for each process
     MPI_Offset* all_collection_sizes = (MPI_Offset*) NCI_Malloc(size * sizeof(MPI_Offset));
+    
     int mpireturn;
 
     TRACE_COMM(MPI_Allgather)(&local_hdr.xsz, 1, MPI_OFFSET, all_collection_sizes, 1, MPI_OFFSET, pncp->comm);
@@ -1711,7 +1726,9 @@ ncmpi_enddef(int ncid) {
     // Phase 2: Communicate the actual header data
     // Before MPI_Allgatherv
     TRACE_COMM(MPI_Allgatherv)(send_buffer, local_hdr.xsz, MPI_BYTE, all_collections_buffer, recvcounts, recv_displs, MPI_BYTE, pncp->comm);
+    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 4);
     NCI_Free(send_buffer);
+    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5);
     
   /* ---------------------------------------------- META: Deseralize metadata ----------------------------------------------*/
 
@@ -1745,13 +1762,18 @@ ncmpi_enddef(int ncid) {
         struct hdr *recv_hdr = (struct hdr*)NCI_Malloc(sizeof(struct hdr));
         // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
         deserialize_hdr(recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
+        if (i==size-1)
+            NCI_Free(all_collections_buffer);
         err = add_hdr(recv_hdr, i, rank, pncp, old_dimarray, old_vararray);
+        // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5+i+1);
         free_hdr(recv_hdr);
         if (err != NC_NOERR) return err;
     }
     
-    NCI_Free(all_collections_buffer);
+    
     NCI_Free(all_collection_sizes);
+    NCI_Free(recv_displs);
+    NCI_Free(recvcounts);
 
     
     // #ifndef SEARCH_NAME_LINEARLY
@@ -1777,7 +1799,7 @@ ncmpi_enddef(int ncid) {
 
 
 
-    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 2);
+    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5+size+1);
 
     /* calling the subroutine that implements ncmpi_enddef() */
     err = pncp->driver->enddef(pncp->ncp);
