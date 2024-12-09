@@ -72,6 +72,10 @@ static int ncmpi_default_create_format = NC_FORMAT_CLASSIC;
 }
 
 
+
+
+
+
 /*META: Extract metadata and save it to new header struc*/
 
 static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
@@ -723,6 +727,37 @@ PNC_check_id(int ncid, PNC **pncp)
 err_out:
 #endif
     return (err != NC_NOERR) ? err : perr;
+}
+
+/*----< pnetcdf_check_crt_mem() >---------------------------------------------------*/
+/* check PnetCDF library internal memory usage */
+static int
+pnetcdf_check_crt_mem(MPI_Comm comm, int checkpoint)
+{
+    int err, nerrs=0, rank;
+    MPI_Offset malloc_size, sum_size;
+
+    MPI_Comm_rank(comm, &rank);
+
+    /* print info about PnetCDF internal malloc usage */
+    err = ncmpi_inq_malloc_size(&malloc_size);
+    if (err == NC_NOERR) {
+        // MPI_Reduce(&malloc_size, &sum_size, 1, MPI_OFFSET, MPI_SUM, 0, MPI_COMM_WORLD);
+        if (rank == 0){
+            // printf("checkpoint 0-%d: total current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
+            //        checkpoint, (float)sum_size /1048576);
+            printf("checkpoint 0-%d: rank 0 current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
+                   checkpoint, malloc_size, (float)malloc_size /1048576);
+        }else if (rank == 1){
+            printf("checkpoint 0-%d: rank 1 current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
+                   checkpoint, malloc_size, (float)malloc_size /1048576);
+        }
+    }
+    else if (err != NC_ENOTENABLED) {
+        printf("Error at %s:%d: %s\n", __FILE__,__LINE__,ncmpi_strerror(err));
+        nerrs++;
+    }
+    return nerrs;
 }
 
 /*----< construct_info() >---------------------------------------------------*/
@@ -1566,6 +1601,8 @@ ncmpi_close(int ncid)
     return err;
 }
 
+
+
 /*----< ncmpi_enddef() >-----------------------------------------------------*/
 /* This is a collective subroutine. */
 int
@@ -1590,7 +1627,7 @@ ncmpi_enddef(int ncid) {
     }
     else if (err != NC_NOERR) return err; /* fatal error */
 
-
+    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 0);
     /* ---------------------------------------------- META: serilize local metadata to buffer----------------------------------------------*/
 
     //Duplicate old header dim array here
@@ -1613,6 +1650,8 @@ ncmpi_enddef(int ncid) {
     int rank, size;
     MPI_Comm_rank(pncp->comm, &rank);
     MPI_Comm_size(pncp->comm, &size);
+
+    
 
     // if (rank > 1){
     // for (int i = 0; i < local_hdr.dims.ndefined; i++) {
@@ -1639,8 +1678,10 @@ ncmpi_enddef(int ncid) {
     // if (rank == 0)
     //     printf("local_hdr size/MB: %d\n", local_hdr.xsz/1048576);
     err = serialize_hdr(&local_hdr, send_buffer);
+    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 1);
     free_hdr_vararray(&local_hdr.vars);
     free_hdr_dimarray(&local_hdr.dims);
+    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 2);
 
     /* ---------------------------------------------- META: Communicate metadata size----------------------------------------------*/
 
@@ -1671,7 +1712,7 @@ ncmpi_enddef(int ncid) {
     // Before MPI_Allgatherv
     TRACE_COMM(MPI_Allgatherv)(send_buffer, local_hdr.xsz, MPI_BYTE, all_collections_buffer, recvcounts, recv_displs, MPI_BYTE, pncp->comm);
     NCI_Free(send_buffer);
-
+    
   /* ---------------------------------------------- META: Deseralize metadata ----------------------------------------------*/
 
     if (err != NC_NOERR) return err;
@@ -1708,9 +1749,10 @@ ncmpi_enddef(int ncid) {
         free_hdr(recv_hdr);
         if (err != NC_NOERR) return err;
     }
+    
     NCI_Free(all_collections_buffer);
     NCI_Free(all_collection_sizes);
-    
+
     
     // #ifndef SEARCH_NAME_LINEARLY
     //     /* initialize and populate name lookup tables ---------------------------*/
@@ -1735,7 +1777,7 @@ ncmpi_enddef(int ncid) {
 
 
 
-
+    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 2);
 
     /* calling the subroutine that implements ncmpi_enddef() */
     err = pncp->driver->enddef(pncp->ncp);
@@ -1744,6 +1786,7 @@ ncmpi_enddef(int ncid) {
 
     fClr(pncp->flag, NC_MODE_INDEP); /* default enters collective data mode */
     fClr(pncp->flag, NC_MODE_DEF);
+    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 3);
  
     return NC_NOERR;
 }

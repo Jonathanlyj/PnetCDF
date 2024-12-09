@@ -1,3 +1,7 @@
+#ifdef HAVE_CONFIG_H
+# include <config.h>
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h> /* strcpy(), strncpy() */
@@ -7,6 +11,7 @@
 #include <mpi.h>
 #include <pnetcdf.h>
 #include <common.h>
+#include <dispatch.h>
 #include "baseline_ncx.h" 
 #include "../drivers/ncmpio/ncmpio_NC.h"
 
@@ -530,6 +535,8 @@ int deserialize_hdr(struct hdr *ncp, void *buf, int buf_size) {
 
     return 0;
 }
+
+
 void free_hdr_dim(hdr_dim *dim) {
     if (dim != NULL) {
         NCI_Free(dim->name);
@@ -596,4 +603,3 @@ void free_hdr(struct hdr *header) {
 
     }
 }
-

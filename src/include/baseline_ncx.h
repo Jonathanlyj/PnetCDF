@@ -1,7 +1,13 @@
+#ifdef HAVE_CONFIG_H
+# include <config.h>
+#endif
+
 #include <stddef.h> 
-#include <mpi.h>
+// #include <mpi.h>
 #include <pnetcdf.h>
 #include <stdbool.h>
+#include <common.h>
+
 
 
 #define NC_NOERR        0  
