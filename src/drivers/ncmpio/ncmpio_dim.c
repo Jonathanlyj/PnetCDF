@@ -120,15 +120,19 @@ ncmpio_free_NC_dimarray(NC_dimarray *ncap)
     int i;
 
     assert(ncap != NULL);
-    // double start_time;
-    // double free_dim_array_time;
-    // double free_dim_extra_time;
-    // double free_dim_hash_time;
+    double start_time;
+    double free_dim_array_time;
+    double free_dim_hash_time;
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    start_time = MPI_Wtime();
+    int hash_size = ncap->hash_size;
+    int ndefined = ncap->ndefined;
     if (ncap->value != NULL) {
         /* when error is detected reading NC_DIMENSION tag, ncap->ndefined can
          * be > 0 and ncap->value is still NULL
          */
-        // start_time = MPI_Wtime();
+        
         for (i=0; i<ncap->ndefined; i++) {
             /* when error is detected reading dimension i, ncap->value[i] can
              * still be NULL
@@ -139,11 +143,11 @@ ncmpio_free_NC_dimarray(NC_dimarray *ncap)
         }
         
         NCI_Free(ncap->value);
-        // free_dim_array_time = MPI_Wtime() - start_time;
-        // start_time = MPI_Wtime();
+        
+
 
         ncap->value = NULL;
-        // free_dim_extra_time = MPI_Wtime() - start_time;
+
     }
     if (ncap->localids != NULL) {
         NCI_Free(ncap->localids);
@@ -153,9 +157,10 @@ ncmpio_free_NC_dimarray(NC_dimarray *ncap)
         NCI_Free(ncap->indexes);
         ncap->indexes = NULL;
     }
+    free_dim_array_time = MPI_Wtime() - start_time;
     ncap->ndefined = 0;
     ncap->nread = 0;
-    // start_time = MPI_Wtime();
+    start_time = MPI_Wtime();
     // printf("dimarray ncap->hash_size: %d\n", ncap->hash_size);
 #ifndef SEARCH_NAME_LINEARLY
     /* free space allocated for dim name lookup table */
@@ -166,8 +171,10 @@ ncmpio_free_NC_dimarray(NC_dimarray *ncap)
         ncap->hash_size = 0;
     }
 #endif
-    // free_dim_hash_time = MPI_Wtime() - start_time;
-    // printf("free_dim_array_time: %f, free_dim_extra_time: %f, free_dim_hash_time: %f\n", free_dim_array_time, free_dim_extra_time, free_dim_hash_time);
+    free_dim_hash_time = MPI_Wtime() - start_time;
+    if (rank == 0)
+        printf("free_dim_array_time (%d dims): %f, free_dim_hash_time(%d hash size): %f\n", ndefined, free_dim_array_time,
+     hash_size, free_dim_hash_time);
 }
 
 /*----< ncmpio_dup_NC_dimarray() >-------------------------------------------*/

@@ -32,7 +32,7 @@
 #include "ncmpio_subfile.h"
 #endif
 
-// int free_counter = 0;
+int free_counter = 0;
 int cls_counter = 0;
 
 /*----< ncmpio_free_NC() >----------------------------------------------------*/
@@ -54,11 +54,12 @@ ncmpio_free_NC(NC *ncp)
     //     printf("ncmpio_free_NC free() count after ncmpio_free_NC_attarray: %d\n", free_counter);
     start_time = MPI_Wtime();
     ncmpio_free_NC_vararray(&ncp->vars);
-    double other_start = MPI_Wtime();
+    
     
     // if (rank == 0)
     //     printf("ncmpio_free_NC free() count after ncmpio_free_NC_vararray: %d\n", free_counter);
     double var_free_time = MPI_Wtime() - start_time;
+    double other_start = MPI_Wtime();
 
     /* The only case that ncp->mpiinfo is MPI_INFO_NULL is when exiting endef
      * from a redef. All other cases reaching here are from ncmpi_close, in
@@ -236,8 +237,9 @@ ncmpio_close(void *ncdp)
     }
 
     /* free up space occupied by the header metadata */
+    MPI_Barrier(ncp->comm); //add barrier to make sure all processes starts from the same place
     double free_time_start = MPI_Wtime();
-    // free_counter = 0;
+    free_counter = 0;
     cls_counter = 0;
     int rank;
     MPI_Comm_rank(ncp->comm, &rank);
@@ -247,7 +249,7 @@ ncmpio_close(void *ncdp)
     if (rank == 0){
         printf("ncmpio_free_NC time: %f\n", free_time);
         printf("before ncmpio_free_NC time: %f\n", free_time_start - close_start);
-        // printf("ncmpio_free_NC free() count: %d\n", free_counter);
+        printf("ncmpio_free_NC free() count: %d\n", free_counter);
     }
     // if (rank == 0){
     //     printf("cls_counter: %d\n", cls_counter);   

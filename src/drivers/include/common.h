@@ -53,7 +53,7 @@
      (xtype == NC_UBYTE && itype == MPI_UNSIGNED_CHAR)) ? 0 : 1
 #endif
 
-// extern int free_counter;e
+extern int free_counter;
 extern int cls_counter;
 
 extern void *
@@ -81,7 +81,7 @@ NCI_Free_fn(void *ptr, const int lineno, const char *func,
 #define NCI_Malloc(a)    malloc(a)
 #define NCI_Calloc(a,b)  calloc(a,b)
 #define NCI_Realloc(a,b) realloc(a,b)
-#define NCI_Free(a)      free(a)
+#define NCI_Free(a)      NCI_Free_fn(a,__LINE__,__func__,__FILE__)
 #endif
 
 extern int
