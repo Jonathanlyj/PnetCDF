@@ -145,6 +145,8 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
     // first_var = 1;
     // double start_time, free_var_array_time, free_var_extra_time, free_var_hash_time;
     // start_time = MPI_Wtime();
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if (ncap->value != NULL) {
         /* when error is detected reading NC_VARIABLE tag, ncap->ndefined can
          * be > 0 and ncap->value is still NULL
@@ -188,6 +190,8 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
     }
 #endif
     // free_var_hash_time = MPI_Wtime() - start_time;
+    if (rank == 0)
+        printf("var: free_calls: %d\n", free_counter);
     // printf("free_var_array_time: %f, free_var_extra_time: %f, free_var_hash_time: %f\n", free_var_array_time, free_var_extra_time, free_var_hash_time);
 }
 
