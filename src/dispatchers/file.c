@@ -1758,19 +1758,40 @@ ncmpi_enddef(int ncid) {
     // pncp->ncp->vars = *ncvars;
 
 
+    // for (int i = 0; i < size; ++i) {
+    //     struct hdr *recv_hdr = (struct hdr*)NCI_Malloc(sizeof(struct hdr));
+    //     // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
+    //     deserialize_hdr(recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
+    //     if (i==size-1)
+    //         NCI_Free(all_collections_buffer);
+    //     err = add_hdr(recv_hdr, i, rank, pncp, old_dimarray, old_vararray);
+    //     // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5+i+1);
+    //     free_hdr(recv_hdr);
+    //     if (err != NC_NOERR) return err;
+    // }
+
+
+    struct hdr **recv_hdrs = (struct hdr**)NCI_Malloc(size * sizeof(struct hdr*));
+
     for (int i = 0; i < size; ++i) {
-        struct hdr *recv_hdr = (struct hdr*)NCI_Malloc(sizeof(struct hdr));
+        recv_hdrs[i]= (struct hdr*)NCI_Malloc(sizeof(struct hdr));
         // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
-        deserialize_hdr(recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
-        if (i==size-1)
-            NCI_Free(all_collections_buffer);
-        err = add_hdr(recv_hdr, i, rank, pncp, old_dimarray, old_vararray);
+        deserialize_hdr(recv_hdrs[i], all_collections_buffer + recv_displs[i], recvcounts[i]);
+           
+        // err = add_hdr(recv_hdr, i, rank, pncp, old_dimarray, old_vararray);
         // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5+i+1);
-        free_hdr(recv_hdr);
+
+    }
+    NCI_Free(all_collections_buffer);
+
+
+    for (int i = 0; i < size; ++i) {
+        err = add_hdr(recv_hdrs[i], i, rank, pncp, old_dimarray, old_vararray);
         if (err != NC_NOERR) return err;
+        free_hdr(recv_hdrs[i]);
     }
     
-    
+    NCI_Free(recv_hdrs);
     NCI_Free(all_collection_sizes);
     NCI_Free(recv_displs);
     NCI_Free(recvcounts);
