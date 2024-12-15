@@ -131,27 +131,31 @@ static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
         //Variable Attributes
         var_info->attrs.ndefined = ncp->vars.value[i]->attrs.ndefined;
         file_info->xsz += 2 * sizeof(uint32_t); // NC_Attribute and ndefine
-        var_info->attrs.value = (hdr_attr **)NCI_Malloc(var_info->attrs.ndefined * sizeof(hdr_attr *));
-        for (int k = 0; k < ncp->vars.value[i]->attrs.ndefined; k++) {
-    
-                    hdr_attr *attr_info = (hdr_attr *)NCI_Malloc(sizeof(hdr_attr));
-                    attr_info->nelems = ncp->vars.value[i]->attrs.value[k]->nelems;
-                    attr_info->xtype = ncp->vars.value[i]->attrs.value[k] ->xtype; // Using NC_INT for simplicity
-                    attr_info->name_len = ncp->vars.value[i]->attrs.value[k]->name_len;
-                    attr_info->name = (char *)NCI_Malloc(attr_info->name_len + 1);
-                    strcpy(attr_info->name, ncp->vars.value[i]->attrs.value[k]->name);
-                    // ncmpii_xlen_nc_type(attr_info->xtype, &v_attrV_xsz);
-                    // int nbytes = attr_info->nelems * v_attrV_xsz;
-                    // memcpy(attr_info->xvalue, ncp->vars.value[i]->attrs.value[k]->xvalue, nbytes);
-                    attr_info->xvalue = ncp->vars.value[i]->attrs.value[k]->xvalue;
-                    file_info->xsz += sizeof(uint32_t) + sizeof(char) * attr_info->name_len; //attr name
-                    file_info->xsz += sizeof(uint32_t); // nc_type
-                    file_info->xsz += sizeof(uint32_t); // nelems
-                    err = xlen_nc_type(attr_info->xtype, &v_attrV_xsz);
-                    file_info->xsz += attr_info->nelems * v_attrV_xsz;
+        if (var_info->attrs.ndefined == 0) {
+            var_info->attrs.value = NULL;
+        } else{
+            var_info->attrs.value = (hdr_attr **)NCI_Malloc(var_info->attrs.ndefined * sizeof(hdr_attr *));
+            for (int k = 0; k < ncp->vars.value[i]->attrs.ndefined; k++) {
         
-                    var_info->attrs.value[k] = attr_info;
-            }
+                        hdr_attr *attr_info = (hdr_attr *)NCI_Malloc(sizeof(hdr_attr));
+                        attr_info->nelems = ncp->vars.value[i]->attrs.value[k]->nelems;
+                        attr_info->xtype = ncp->vars.value[i]->attrs.value[k] ->xtype; // Using NC_INT for simplicity
+                        attr_info->name_len = ncp->vars.value[i]->attrs.value[k]->name_len;
+                        attr_info->name = (char *)NCI_Malloc(attr_info->name_len + 1);
+                        strcpy(attr_info->name, ncp->vars.value[i]->attrs.value[k]->name);
+                        // ncmpii_xlen_nc_type(attr_info->xtype, &v_attrV_xsz);
+                        // int nbytes = attr_info->nelems * v_attrV_xsz;
+                        // memcpy(attr_info->xvalue, ncp->vars.value[i]->attrs.value[k]->xvalue, nbytes);
+                        attr_info->xvalue = ncp->vars.value[i]->attrs.value[k]->xvalue;
+                        file_info->xsz += sizeof(uint32_t) + sizeof(char) * attr_info->name_len; //attr name
+                        file_info->xsz += sizeof(uint32_t); // nc_type
+                        file_info->xsz += sizeof(uint32_t); // nelems
+                        err = xlen_nc_type(attr_info->xtype, &v_attrV_xsz);
+                        file_info->xsz += attr_info->nelems * v_attrV_xsz;
+            
+                        var_info->attrs.value[k] = attr_info;
+                }
+        }
         file_info->vars.value[i] = var_info;
 
     }
@@ -1791,7 +1795,6 @@ ncmpi_enddef(int ncid) {
     }
     NCI_Free(recv_hdrs);
     NCI_Free(all_collections_buffer);
-    NCI_Free(recv_hdrs);
     NCI_Free(all_collection_sizes);
     NCI_Free(recv_displs);
     NCI_Free(recvcounts);
