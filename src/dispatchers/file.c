@@ -104,11 +104,7 @@ static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
         file_info->xsz += sizeof(uint32_t) + sizeof(char) * dim_info->name_len; // dim name
         file_info->xsz += sizeof(uint32_t); //size
     }
-    // if (ncp->dims.localids != NULL) {
-    //     NCI_Free(ncp->dims.localids);
-    //     ncp->dims.localids = NULL;
-    // }
-    ncmpio_free_NC_dimarray(&ncp->dims);
+    // ncmpio_free_NC_dimarray(&ncp->dims);
 
 
     // Variables
@@ -159,11 +155,8 @@ static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
         file_info->vars.value[i] = var_info;
 
     }
-    // if (ncp->vars.localids != NULL) {
-    //     NCI_Free(ncp->vars.localids);
-    //     ncp->vars.localids = NULL;
-    // }
-    ncmpio_free_NC_vararray(&ncp->vars);
+
+    // ncmpio_free_NC_vararray(&ncp->vars);
 
     return err;
 }
@@ -1655,8 +1648,8 @@ ncmpi_enddef(int ncid) {
     
     // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 0); 
     struct hdr local_hdr;
-    err = baseline_extract_meta(pncp->ncp, &local_hdr); // this step also frees the dims and vars in ncp
-    
+    err = baseline_extract_meta(pncp->ncp, &local_hdr); // this step doesn't free the dims and vars in ncp
+
 
     int rank, size;
     MPI_Comm_rank(pncp->comm, &rank);
@@ -1693,8 +1686,8 @@ ncmpi_enddef(int ncid) {
     err = serialize_hdr(&local_hdr, send_buffer);
     // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 2);
     
-    free_hdr_vararray(&local_hdr.vars);
-    free_hdr_dimarray(&local_hdr.dims);
+    // free_hdr_vararray(&local_hdr.vars);
+    // free_hdr_dimarray(&local_hdr.dims);
    
     // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 3);
     /* ---------------------------------------------- META: Communicate metadata size----------------------------------------------*/
@@ -1728,6 +1721,8 @@ ncmpi_enddef(int ncid) {
     TRACE_COMM(MPI_Allgatherv)(send_buffer, local_hdr.xsz, MPI_BYTE, all_collections_buffer, recvcounts, recv_displs, MPI_BYTE, pncp->comm);
     // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 4);
     NCI_Free(send_buffer);
+    ncmpio_free_NC_vararray(&ncp->vars);
+    ncmpio_free_NC_dimarray(&ncp->dims);
     // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5);
     
   /* ---------------------------------------------- META: Deseralize metadata ----------------------------------------------*/
@@ -1782,15 +1777,20 @@ ncmpi_enddef(int ncid) {
         // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5+i+1);
 
     }
-    NCI_Free(all_collections_buffer);
+    
 
 
     for (int i = 0; i < size; ++i) {
         err = add_hdr(recv_hdrs[i], i, rank, pncp, old_dimarray, old_vararray);
         if (err != NC_NOERR) return err;
+        // free_hdr(recv_hdrs[i]);
+    }
+
+    for (int i = 0; i < size; ++i) {
         free_hdr(recv_hdrs[i]);
     }
-    
+    NCI_Free(recv_hdrs);
+    NCI_Free(all_collections_buffer);
     NCI_Free(recv_hdrs);
     NCI_Free(all_collection_sizes);
     NCI_Free(recv_displs);
@@ -1811,7 +1811,8 @@ ncmpi_enddef(int ncid) {
     // for (int j = 0; j < ncp->dims.ndefined; j++) printf("\n rank: %d:  %d : %d", rank, j, ncp->dims.localids[j]);
     for (int j = 0; j < ncp->dims.ndefined; j++) ncp->dims.indexes[ncp->dims.localids[j]] = j;
     for (int j = 0; j < ncp->vars.ndefined; j++) ncp->vars.indexes[ncp->vars.localids[j]] = j;
-
+    free_hdr_vararray(&local_hdr.vars);
+    free_hdr_dimarray(&local_hdr.dims);
     ncmpio_free_NC_dimarray(old_dimarray);
     ncmpio_free_NC_vararray(old_vararray);
     NCI_Free(old_vararray);
