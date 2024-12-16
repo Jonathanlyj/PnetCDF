@@ -281,7 +281,7 @@ void NCI_Free_fn(void       *ptr,
     ncmpii_del_mem_entry(ptr);
 #endif
     free(ptr);
-    free_counter++;
+    // free_counter++;
     
 }
 

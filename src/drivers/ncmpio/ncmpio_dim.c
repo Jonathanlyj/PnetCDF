@@ -172,9 +172,9 @@ ncmpio_free_NC_dimarray(NC_dimarray *ncap)
     }
 #endif
     free_dim_hash_time = MPI_Wtime() - start_time;
-    if (rank == 0)
-        printf("free_dim_array_time (%d dims): %f, free_dim_hash_time(%d hash size): %f free_calls: %d\n", ndefined, free_dim_array_time,
-     hash_size, free_dim_hash_time, free_counter);
+    // if (rank == 0)
+    //     printf("free_dim_array_time (%d dims): %f, free_dim_hash_time(%d hash size): %f free_calls: %d\n", ndefined, free_dim_array_time,
+    //  hash_size, free_dim_hash_time, free_counter);
 }
 
 /*----< ncmpio_dup_NC_dimarray() >-------------------------------------------*/

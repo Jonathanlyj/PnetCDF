@@ -190,8 +190,8 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
     }
 #endif
     // free_var_hash_time = MPI_Wtime() - start_time;
-    if (rank == 0)
-        printf("var: free_calls: %d\n", free_counter);
+    // if (rank == 0)
+    //     printf("var: free_calls: %d\n", free_counter);
     // printf("free_var_array_time: %f, free_var_extra_time: %f, free_var_hash_time: %f\n", free_var_array_time, free_var_extra_time, free_var_hash_time);
 }
 

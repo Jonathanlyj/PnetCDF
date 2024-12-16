@@ -249,7 +249,7 @@ ncmpio_close(void *ncdp)
     if (rank == 0){
         printf("ncmpio_free_NC time: %f\n", free_time);
         printf("before ncmpio_free_NC time: %f\n", free_time_start - close_start);
-        printf("ncmpio_free_NC free() count: %d\n", free_counter);
+        // printf("ncmpio_free_NC free() count: %d\n", free_counter);
     }
     // if (rank == 0){
     //     printf("cls_counter: %d\n", cls_counter);   
