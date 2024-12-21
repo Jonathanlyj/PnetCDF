@@ -1781,7 +1781,7 @@ ncmpi_enddef(int ncid) {
         // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5+i+1);
 
     }
-    NCI_Free(all_collections_buffer);
+    
 
 
     for (int i = 0; i < size; ++i) {
@@ -1794,7 +1794,7 @@ ncmpi_enddef(int ncid) {
         free_hdr(recv_hdrs[i]);
     }
     NCI_Free(recv_hdrs);
-    
+    NCI_Free(all_collections_buffer);
     NCI_Free(all_collection_sizes);
     NCI_Free(recv_displs);
     NCI_Free(recvcounts);
