@@ -1866,6 +1866,12 @@ ncmpi_enddef(int ncid) {
         // free_hdr(&all_recv_hdr[i]);
         if (err != NC_NOERR) return err;
     }
+    #ifndef SEARCH_NAME_LINEARLY
+        /* initialize and populate name lookup tables ---------------------------*/
+        ncmpio_hash_table_populate_NC_dim(&ncp->dims, ncp->dims.hash_size);
+        ncmpio_hash_table_populate_NC_var(&ncp->vars, ncp->vars.hash_size);;
+
+    #endif
     for (int i = 0; i < nproc; i++) {
         NCI_Free(dim_sort_map[i]);
     }
@@ -1878,21 +1884,10 @@ ncmpi_enddef(int ncid) {
         free_hdr(all_recv_hdr[i]);
     }
     NCI_Free(all_recv_hdr);
-    // for (int i = 0; i < total_ndims; i++) {
-    //     free_hdr_dim(sort_dims[i]);
-    // }
-    // for (int i = 0; i < total_nvars; i++) {
-    //     free_hdr_var(sort_vars[i]);
-    // }
     NCI_Free(sort_dims);
     NCI_Free(sort_vars);
     
-    #ifndef SEARCH_NAME_LINEARLY
-        /* initialize and populate name lookup tables ---------------------------*/
-        ncmpio_hash_table_populate_NC_dim(&ncp->dims, ncp->dims.hash_size);
-        ncmpio_hash_table_populate_NC_var(&ncp->vars, ncp->vars.hash_size);;
 
-    #endif
     //update local id to index mapping based on index to local id mapping
 
     //for (int j = 0; j < ncp->dims.ndefined; j++) ncp->dims.indexes[ncp->dims.localids[j]] = j;
