@@ -1573,6 +1573,92 @@ ncmpi_close(int ncid)
     return err;
 }
 
+/*----< shallow_dup_NC_dimarray() >-------------------------------------------*/
+int
+shallow_dup_NC_dimarray(NC_dimarray *ncap, const NC_dimarray *ref)
+{
+    int i, status=NC_NOERR;
+
+    assert(ref != NULL);
+    assert(ncap != NULL);
+
+    ncap->value = NULL;
+    /* allocate array of NC_dim objects */
+    if (ref->ndefined > 0) {
+        size_t alloc_size = _RNDUP(ref->ndefined, PNC_ARRAY_GROWBY);
+        ncap->localids = (int*) NCI_Calloc(alloc_size, SIZEOF_INT);
+        // ncap->indexes = (int*) NCI_Calloc(alloc_size, SIZEOF_INT);
+        ncap->indexes = NULL;
+
+    }
+
+    /* duplicate each NC_dim objects */
+    ncap->ndefined = 0;
+    ncap->nread = ref->nread;
+    for (i=0; i<ref->ndefined; i++) {
+        ncap->localids[i] = ref->localids[i];
+        // ncap->indexes[i] = ref->indexes[i];
+        ncap->ndefined++;
+    }
+    
+    assert(ncap->ndefined == ref->ndefined);
+#ifndef SEARCH_NAME_LINEARLY
+    /* allocate hashing lookup table, if not allocated yet */
+    ncap->hash_size = ref->hash_size;
+    ncap->nameT == NULL;
+#endif
+    return NC_NOERR;
+}
+
+
+/*----< shallow_dup_NC_vararray() >-------------------------------------------*/
+int
+shallow_dup_NC_vararray(NC_vararray       *ncap,
+                       const NC_vararray *ref,
+                       int                attr_hsize)
+{
+    int i, status=NC_NOERR;
+    size_t alloc_size;
+
+    assert(ref != NULL);
+    assert(ncap != NULL);
+
+    if (ref->ndefined == 0) {
+        ncap->ndefined = 0;
+        ncap->value = NULL;
+        return NC_NOERR;
+    }
+    ncap->value = NULL;
+
+
+    if (ref->ndefined > 0) {
+        size_t alloc_size = _RNDUP(ref->ndefined, PNC_ARRAY_GROWBY);
+        ncap->localids = (int *)  NCI_Calloc(alloc_size, SIZEOF_INT);
+        // ncap->indexes = (int *)  NCI_Calloc(alloc_size, SIZEOF_INT);
+        ncap->indexes = NULL;
+    }
+
+    /* don't duplicate  NC_var object */
+    ncap->ndefined = 0;
+    ncap->nread = ref->nread;
+    for (i=0; i<ref->ndefined; i++) {
+        ncap->localids[i] = ref->localids[i];
+        // ncap->indexes[i] = ref->indexes[i];
+        ncap->ndefined++;
+    }
+    if (status != NC_NOERR) {
+        ncmpio_free_NC_vararray(ncap);
+        return status;
+    }
+    assert(ncap->ndefined == ref->ndefined);
+
+#ifndef SEARCH_NAME_LINEARLY
+    /* allocate hashing lookup table, if not allocated yet */
+    ncap->hash_size = ref->hash_size;
+    ncap->nameT == NULL;
+#endif
+    return NC_NOERR;
+}
 /*----< ncmpi_enddef() >-----------------------------------------------------*/
 /* This is a collective subroutine. */
 int
@@ -1598,6 +1684,17 @@ ncmpi_enddef(int ncid) {
 
     /* ---------------------------------------------- META: serilize local metadata to buffer----------------------------------------------*/
     // struct hdr *local_hdr = (struct hdr *)NCI_Malloc(sizeof(struct hdr));
+    //Duplicate old header dim array here
+    NC *ncp=(NC*)pncp->ncp;
+    NC_dimarray *old_dimarray = NCI_Malloc(sizeof(NC_dimarray));
+    NC_vararray *old_vararray = NCI_Malloc(sizeof(NC_vararray));
+    old_dimarray->nameT = NULL;
+    old_vararray->nameT = NULL;
+    err = shallow_dup_NC_dimarray(old_dimarray, &ncp->dims);
+    if (err != NC_NOERR) return err;
+
+    err = shallow_dup_NC_vararray(old_vararray, &ncp->vars, ncp->hash_size_attr);
+    if (err != NC_NOERR) return err;
     struct hdr local_hdr;
     err = baseline_extract_meta(pncp->ncp, &local_hdr);
     // printf("%s\n", local_hdr->dims.value[0]->name);
@@ -1656,8 +1753,9 @@ ncmpi_enddef(int ncid) {
     // Before MPI_Allgatherv
     TRACE_COMM(MPI_Allgatherv)(send_buffer, local_hdr.xsz, MPI_BYTE, all_collections_buffer, recvcounts, recv_displs, MPI_BYTE, pncp->comm);
     // free_hdr(local_hdr);
-    free_hdr_dimarray(&local_hdr.dims);
-    free_hdr_vararray(&local_hdr.vars);
+    NCI_Free(send_buffer);
+    ncmpio_free_NC_vararray(&ncp->vars);
+    ncmpio_free_NC_dimarray(&ncp->dims);
     
 
   /* ---------------------------------------------- META: Deseralize metadata ----------------------------------------------*/
@@ -1669,19 +1767,10 @@ ncmpi_enddef(int ncid) {
     // ncdims->ndefined = 0;
     // ncdims->unlimited_id = -1;
     // ncvars->ndefined = 0;
-    //Duplicate old header dim array here
-    NC *ncp=(NC*)pncp->ncp;
-    NC_dimarray *old_dimarray = NCI_Malloc(sizeof(NC_dimarray));
-    NC_vararray *old_vararray = NCI_Malloc(sizeof(NC_vararray));
-    old_dimarray->nameT = NULL;
-    old_vararray->nameT = NULL;
-    err = ncmpio_dup_NC_dimarray(old_dimarray, &ncp->dims);
-    if (err != NC_NOERR) return err;
 
-    err = ncmpio_dup_NC_vararray(old_vararray, &ncp->vars, ncp->hash_size_attr);
-    if (err != NC_NOERR) return err;
-    ncmpio_free_NC_dimarray(&ncp->dims);
-    ncmpio_free_NC_vararray(&ncp->vars);
+    
+
+
     ncp->dims.hash_size = old_dimarray->hash_size;
     ncp->vars.hash_size = old_vararray->hash_size;
     //reset pncp var array object
@@ -1812,18 +1901,20 @@ ncmpi_enddef(int ncid) {
     // for (int j = 0; j < ncp->dims.ndefined; j++) printf("\n rank: %d:  %d : %d", rank, j, ncp->dims.localids[j]);
     for (int j = 0; j < ncp->dims.ndefined; j++) ncp->dims.indexes[ncp->dims.localids[j]] = j;
     for (int j = 0; j < ncp->vars.ndefined; j++) ncp->vars.indexes[ncp->vars.localids[j]] = j;
-
+    free_hdr_vararray(&local_hdr.vars);
+    free_hdr_dimarray(&local_hdr.dims);
     ncmpio_free_NC_dimarray(old_dimarray);
     ncmpio_free_NC_vararray(old_vararray);
     NCI_Free(old_vararray);
-     NCI_Free(old_dimarray);
+    NCI_Free(old_dimarray);
 
 
 
 
     NCI_Free(all_collections_buffer);
-    NCI_Free(send_buffer);
     NCI_Free(all_collection_sizes);
+    NCI_Free(recv_displs);
+    NCI_Free(recvcounts);
 
 
 
