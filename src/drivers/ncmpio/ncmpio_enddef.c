@@ -786,6 +786,7 @@ write_NC(NC *ncp)
     /* only rank 0's header gets written to the file */
     /*META new header file: only rank 0 writes global header */
     MPI_Offset offset, remain;
+    double start_write = MPI_Wtime();
     if (rank == 0) {
         char *buf=NULL, *buf_ptr;
 
@@ -821,7 +822,7 @@ write_NC(NC *ncp)
         memset(&mpistatus, 0, sizeof(MPI_Status));
 
 
-        double start_write = MPI_Wtime();
+        
         /* write the header in chunks */
         offset = 0;
         remain = global_header_wlen;
@@ -935,7 +936,7 @@ write_NC(NC *ncp)
         
     double write_time = MPI_Wtime() - start_write;
 
-    if (rank == 0) printf("\nInside ncmpi_enddef mpi write time: %f", write_time);
+    if (rank == 0) printf("Inside ncmpi_enddef mpi write time: %f\n", write_time);
         
     
 

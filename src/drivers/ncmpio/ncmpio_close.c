@@ -251,7 +251,7 @@ ncmpio_close(void *ncdp)
     ncmpio_free_NC(ncp);
     double free_time = MPI_Wtime() - start_timer;
     if (myrank == 0) {
-        printf("\nFree ncp time: %f", free_time);
+        printf("Free ncp time: %f\n", free_time);
     }
 
     return status;
