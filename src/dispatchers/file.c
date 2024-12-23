@@ -1773,12 +1773,13 @@ ncmpi_enddef(int ncid) {
     struct hdr **recv_hdrs = (struct hdr**)NCI_Malloc(size * sizeof(struct hdr*));
 
     for (int i = 0; i < size; ++i) {
+        pnetcdf_check_crt_mem(MPI_COMM_WORLD, 43);
         recv_hdrs[i]= (struct hdr*)NCI_Malloc(sizeof(struct hdr));
         // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
         deserialize_hdr(recv_hdrs[i], all_collections_buffer + recv_displs[i], recvcounts[i]);
            
         // err = add_hdr(recv_hdr, i, rank, pncp, old_dimarray, old_vararray);
-        // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5+i+1);
+        pnetcdf_check_crt_mem(MPI_COMM_WORLD, 44);
 
     }
     pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5);
