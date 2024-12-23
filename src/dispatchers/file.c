@@ -1653,6 +1653,7 @@ ncmpi_enddef(int ncid) {
     // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 0); 
     struct hdr local_hdr;
     err = baseline_extract_meta(pncp->ncp, &local_hdr); // this step doesn't free the dims and vars in ncp
+    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 0);
 
 
     int rank, size;
@@ -1688,6 +1689,7 @@ ncmpi_enddef(int ncid) {
     //     printf("local_hdr size/MB: %d\n", local_hdr.xsz/1048576);
     
     err = serialize_hdr(&local_hdr, send_buffer);
+    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 1);
     // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 2);
     
     // free_hdr_vararray(&local_hdr.vars);
@@ -1727,6 +1729,7 @@ ncmpi_enddef(int ncid) {
     NCI_Free(send_buffer);
     ncmpio_free_NC_vararray(&ncp->vars);
     ncmpio_free_NC_dimarray(&ncp->dims);
+    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 2);
     // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5);
     
   /* ---------------------------------------------- META: Deseralize metadata ----------------------------------------------*/
