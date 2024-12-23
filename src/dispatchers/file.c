@@ -1659,6 +1659,38 @@ shallow_dup_NC_vararray(NC_vararray       *ncap,
 #endif
     return NC_NOERR;
 }
+
+/*----< pnetcdf_check_crt_mem() >---------------------------------------------------*/
+/* check PnetCDF library internal memory usage */
+static int
+pnetcdf_check_crt_mem(MPI_Comm comm, int checkpoint)
+{
+    int err, nerrs=0, rank;
+    MPI_Offset malloc_size, sum_size;
+
+    MPI_Comm_rank(comm, &rank);
+
+    /* print info about PnetCDF internal malloc usage */
+    err = ncmpi_inq_malloc_size(&malloc_size);
+    if (err == NC_NOERR) {
+        // MPI_Reduce(&malloc_size, &sum_size, 1, MPI_OFFSET, MPI_SUM, 0, MPI_COMM_WORLD);
+        if (rank == 1){
+            // printf("checkpoint 0-%d: total current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
+            //        checkpoint, (float)sum_size /1048576);
+            printf("checkpoint 0-%d: rank 1 current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
+                   checkpoint, malloc_size, (float)malloc_size /1048576);
+        }
+        // }else if (rank == 1){
+        //     printf("checkpoint 0-%d: rank 1 current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
+        //            checkpoint, malloc_size, (float)malloc_size /1048576);
+        // }
+    }
+    else if (err != NC_ENOTENABLED) {
+        printf("Error at %s:%d: %s\n", __FILE__,__LINE__,ncmpi_strerror(err));
+        nerrs++;
+    }
+    return nerrs;
+}
 /*----< ncmpi_enddef() >-----------------------------------------------------*/
 /* This is a collective subroutine. */
 int
@@ -1796,9 +1828,7 @@ ncmpi_enddef(int ncid) {
     hdr_var ** sort_vars = NULL;
     MPI_Offset malloc_size;
     //Check memory usage
-    err = ncmpi_inq_malloc_size(&malloc_size);
-    if (rank == 0)
-        printf("\nBefore sort: heap memory allocated by PnetCDF internally has %.2f MB  yet to be freed\n",(double)malloc_size / (1024 * 1024));
+
     int **dim_sort_map = (int **)NCI_Malloc(nproc * sizeof(int *));
     int **var_sort_map = (int **)NCI_Malloc(nproc * sizeof(int *));
     struct hdr** all_recv_hdr = (struct hdr**)NCI_Malloc(nproc * sizeof(struct hdr*));
@@ -1822,11 +1852,9 @@ ncmpi_enddef(int ncid) {
             all_recv_hdr[i]->vars.value[j]->ranklocal_id = j;
             all_recv_hdr[i]->vars.value[j]->global_id = -99;
         }
-        MPI_Offset prev_malloc_size;
-        err = ncmpi_inq_malloc_size(&prev_malloc_size);
+
         sort_dims = (hdr_dim **) NCI_Realloc(sort_dims, (total_ndims + local_ndims) * sizeof(hdr_dim*));
         sort_vars = (hdr_var **) NCI_Realloc(sort_vars, (total_nvars + local_nvars) * sizeof(hdr_var*));
-
 
         memcpy(sort_dims + total_ndims, all_recv_hdr[i]->dims.value, local_ndims * sizeof(hdr_dim*));
         memcpy(sort_vars + total_nvars, all_recv_hdr[i]->vars.value, local_nvars * sizeof(hdr_var*));
@@ -1836,16 +1864,7 @@ ncmpi_enddef(int ncid) {
         total_nvars += local_nvars;
         dim_sort_map[i] = (int *)NCI_Malloc(local_ndims * sizeof(int));
         var_sort_map[i] = (int *)NCI_Malloc(local_nvars * sizeof(int));
-        // MPI_Offset crt_malloc_size;
-        // err = ncmpi_inq_malloc_size(&crt_malloc_size);
-        // if (rank == 0)
-        //     
-        
-        err = ncmpi_inq_malloc_size(&malloc_size);
-        if (rank == 0){
-            printf("\nDuring sort: heap memory allocated by PnetCDF internally has %.2f MB  yet to be freed\n",(double)malloc_size / (1024 * 1024));
-            printf("\nsort_dims/vars: heap memory additionally allocated by PnetCDF internally has %.2f MB \n",(double)(malloc_size - prev_malloc_size) / (1024 * 1024));
-        }
+
     }
 
     //sort dim array based on customized compare function
@@ -1862,11 +1881,10 @@ ncmpi_enddef(int ncid) {
         var_sort_map[sort_vars[i]->rank_id][sort_vars[i]->ranklocal_id] = i;
         }
     //Check memory usage
-    err = ncmpi_inq_malloc_size(&malloc_size);
-    if (rank == 0)
-        printf("\nAfter sort: heap memory allocated by PnetCDF internally has %.2f MB  yet to be freed\n",(double)malloc_size / (1024 * 1024));
+
     
     //start construct the combined hdr structure
+    pnetcdf_check_crt_mem(pncp->comm, 5);
     for (int i = 0; i < nproc; ++i) {
         // struct hdr *recv_hdr = (struct hdr*)NCI_Malloc(sizeof(struct hdr));
         // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
@@ -1875,6 +1893,7 @@ ncmpi_enddef(int ncid) {
         // free_hdr(&all_recv_hdr[i]);
         if (err != NC_NOERR) return err;
     }
+    pnetcdf_check_crt_mem(pncp->comm, 6);
     ncp->dims.nameT = NULL;
     ncp->vars.nameT = NULL;
     // No need ti create hash table, as we now use sorting to do consistency check
