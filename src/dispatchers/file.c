@@ -1769,7 +1769,7 @@ ncmpi_enddef(int ncid) {
     //     if (err != NC_NOERR) return err;
     // }
 
-
+    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 4);
     struct hdr **recv_hdrs = (struct hdr**)NCI_Malloc(size * sizeof(struct hdr*));
 
     for (int i = 0; i < size; ++i) {
@@ -1781,7 +1781,7 @@ ncmpi_enddef(int ncid) {
         // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5+i+1);
 
     }
-    
+    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5);
 
 
     for (int i = 0; i < size; ++i) {
@@ -1789,6 +1789,7 @@ ncmpi_enddef(int ncid) {
         if (err != NC_NOERR) return err;
         // free_hdr(recv_hdrs[i]);
     }
+    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 6);
 
     for (int i = 0; i < size; ++i) {
         free_hdr(recv_hdrs[i]);
