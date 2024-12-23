@@ -1652,8 +1652,9 @@ ncmpi_enddef(int ncid) {
     
     // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 0); 
     struct hdr local_hdr;
-    err = baseline_extract_meta(pncp->ncp, &local_hdr); // this step doesn't free the dims and vars in ncp
     pnetcdf_check_crt_mem(MPI_COMM_WORLD, 0);
+    err = baseline_extract_meta(pncp->ncp, &local_hdr); // this step doesn't free the dims and vars in ncp
+    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 1);
 
 
     int rank, size;
