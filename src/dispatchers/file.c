@@ -1875,12 +1875,15 @@ ncmpi_enddef(int ncid) {
         // free_hdr(&all_recv_hdr[i]);
         if (err != NC_NOERR) return err;
     }
-    #ifndef SEARCH_NAME_LINEARLY
-        /* initialize and populate name lookup tables ---------------------------*/
-        ncmpio_hash_table_populate_NC_dim(&ncp->dims, ncp->dims.hash_size);
-        ncmpio_hash_table_populate_NC_var(&ncp->vars, ncp->vars.hash_size);;
+    ncp->dims.nameT = NULL;
+    ncp->vars.nameT = NULL;
+    // No need ti create hash table, as we now use sorting to do consistency check
+    // #ifndef SEARCH_NAME_LINEARLY
+    //     /* initialize and populate name lookup tables ---------------------------*/
+    //     ncmpio_hash_table_populate_NC_dim(&ncp->dims, ncp->dims.hash_size);
+    //     ncmpio_hash_table_populate_NC_var(&ncp->vars, ncp->vars.hash_size);;
 
-    #endif
+    // #endif
     for (int i = 0; i < nproc; i++) {
         NCI_Free(dim_sort_map[i]);
     }
