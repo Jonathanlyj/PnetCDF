@@ -1,3 +1,6 @@
+#ifdef HAVE_CONFIG_H
+# include <config.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h> /* strcpy(), strncpy() */
@@ -7,6 +10,7 @@
 #include <mpi.h>
 #include <pnetcdf.h>
 #include <common.h>
+#include <dispatch.h>
 #include "baseline_ncx.h" 
 #include "../drivers/ncmpio/ncmpio_NC.h"
 

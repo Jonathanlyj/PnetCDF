@@ -1828,10 +1828,11 @@ ncmpi_enddef(int ncid) {
     hdr_var ** sort_vars = NULL;
     MPI_Offset malloc_size;
     //Check memory usage
-
+    pnetcdf_check_crt_mem(pncp->comm, 4);
     int **dim_sort_map = (int **)NCI_Malloc(nproc * sizeof(int *));
     int **var_sort_map = (int **)NCI_Malloc(nproc * sizeof(int *));
     struct hdr** all_recv_hdr = (struct hdr**)NCI_Malloc(nproc * sizeof(struct hdr*));
+    
     for (int i = 0; i < nproc; ++i) {
         // struct hdr recv_hdr;
         all_recv_hdr[i] = (struct hdr *)NCI_Malloc(sizeof(struct hdr));
