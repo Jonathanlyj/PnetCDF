@@ -72,6 +72,38 @@ static int ncmpi_default_create_format = NC_FORMAT_CLASSIC;
 }
 
 
+/*----< pnetcdf_check_crt_mem() >---------------------------------------------------*/
+/* check PnetCDF library internal memory usage */
+static int
+pnetcdf_check_crt_mem(MPI_Comm comm, int checkpoint)
+{
+    int err, nerrs=0, rank;
+    MPI_Offset malloc_size, sum_size;
+
+    MPI_Comm_rank(comm, &rank);
+
+    /* print info about PnetCDF internal malloc usage */
+    err = ncmpi_inq_malloc_size(&malloc_size);
+    if (err == NC_NOERR) {
+        // MPI_Reduce(&malloc_size, &sum_size, 1, MPI_OFFSET, MPI_SUM, 0, MPI_COMM_WORLD);
+        if (rank == 1){
+            // printf("checkpoint 0-%d: total current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
+            //        checkpoint, (float)sum_size /1048576);
+            printf("checkpoint 0-%d: rank 1 current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
+                   checkpoint, malloc_size, (float)malloc_size /1048576);
+        }
+        // }else if (rank == 1){
+        //     printf("checkpoint 0-%d: rank 1 current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
+        //            checkpoint, malloc_size, (float)malloc_size /1048576);
+        // }
+    }
+    else if (err != NC_ENOTENABLED) {
+        printf("Error at %s:%d: %s\n", __FILE__,__LINE__,ncmpi_strerror(err));
+        nerrs++;
+    }
+    return nerrs;
+}
+
 /*META: Extract metadata and save it to new header struc*/
 
 static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
@@ -102,7 +134,7 @@ static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
     }
     // ncmpio_free_NC_dimarray(&ncp->dims);
 
-
+    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 101);
     // Variables
     file_info->vars.ndefined = ncp->vars.ndefined; 
     file_info->vars.value = (hdr_var **)NCI_Malloc(file_info->vars.ndefined * sizeof(hdr_var *));
@@ -155,7 +187,7 @@ static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
         file_info->vars.value[i] = var_info;
 
     }
-
+    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 102);
     // ncmpio_free_NC_vararray(&ncp->vars);
 
     return err;
@@ -1668,37 +1700,7 @@ shallow_dup_NC_vararray(NC_vararray       *ncap,
     return NC_NOERR;
 }
 
-/*----< pnetcdf_check_crt_mem() >---------------------------------------------------*/
-/* check PnetCDF library internal memory usage */
-static int
-pnetcdf_check_crt_mem(MPI_Comm comm, int checkpoint)
-{
-    int err, nerrs=0, rank;
-    MPI_Offset malloc_size, sum_size;
 
-    MPI_Comm_rank(comm, &rank);
-
-    /* print info about PnetCDF internal malloc usage */
-    err = ncmpi_inq_malloc_size(&malloc_size);
-    if (err == NC_NOERR) {
-        // MPI_Reduce(&malloc_size, &sum_size, 1, MPI_OFFSET, MPI_SUM, 0, MPI_COMM_WORLD);
-        if (rank == 1){
-            // printf("checkpoint 0-%d: total current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
-            //        checkpoint, (float)sum_size /1048576);
-            printf("checkpoint 0-%d: rank 1 current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
-                   checkpoint, malloc_size, (float)malloc_size /1048576);
-        }
-        // }else if (rank == 1){
-        //     printf("checkpoint 0-%d: rank 1 current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
-        //            checkpoint, malloc_size, (float)malloc_size /1048576);
-        // }
-    }
-    else if (err != NC_ENOTENABLED) {
-        printf("Error at %s:%d: %s\n", __FILE__,__LINE__,ncmpi_strerror(err));
-        nerrs++;
-    }
-    return nerrs;
-}
 /*----< ncmpi_enddef() >-----------------------------------------------------*/
 /* This is a collective subroutine. */
 int
@@ -1736,9 +1738,10 @@ ncmpi_enddef(int ncid) {
     err = shallow_dup_NC_vararray(old_vararray, &ncp->vars, ncp->hash_size_attr);
     if (err != NC_NOERR) return err;
     struct hdr local_hdr;
+    pnetcdf_check_crt_mem(pncp->comm, 0);
     err = baseline_extract_meta(pncp->ncp, &local_hdr);
     // printf("%s\n", local_hdr->dims.value[0]->name);
-    pnetcdf_check_crt_mem(pncp->comm, 0);
+    pnetcdf_check_crt_mem(pncp->comm, 1);
 
     int rank, nproc;
     MPI_Comm_rank(pncp->comm, &rank);
