@@ -118,8 +118,9 @@ static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
     // Dimensions
     file_info->dims.ndefined = ncp->dims.ndefined;
     file_info->dims.value = (hdr_dim **)NCI_Malloc(file_info->dims.ndefined * sizeof(hdr_dim *));
+    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 1001);
     file_info->xsz += 2 * sizeof(uint32_t); // NC_Dimension and nelems
-
+    printf("\n file_info->dims.ndefined %d", file_info->dims.ndefined);
     for (int i = 0; i < file_info->dims.ndefined; i++) {
         hdr_dim *dim_info = (hdr_dim *)NCI_Malloc(sizeof(hdr_dim));
         dim_info->size = ncp->dims.value[i]->size;
