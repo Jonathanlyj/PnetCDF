@@ -287,12 +287,12 @@ ncmpio_def_dim(void       *ncdp,    /* IN:  NC object */
     ncp->dims.ndefined++;
 
 #ifndef SEARCH_NAME_LINEARLY
-    /* allocate hashing lookup table, if not allocated yet */
-    if (ncp->dims.nameT == NULL)
-        ncp->dims.nameT = NCI_Calloc(ncp->dims.hash_size, sizeof(NC_nametable));
+    // /* allocate hashing lookup table, if not allocated yet */
+    // if (ncp->dims.nameT == NULL)
+    //     ncp->dims.nameT = NCI_Calloc(ncp->dims.hash_size, sizeof(NC_nametable));
 
-    /* insert nname to the lookup table */
-    ncmpio_hash_insert(ncp->dims.nameT, ncp->dims.hash_size, nname, dimid);
+    // /* insert nname to the lookup table */
+    // ncmpio_hash_insert(ncp->dims.nameT, ncp->dims.hash_size, nname, dimid);
 #endif
 
     if (dimidp != NULL) *dimidp = dimid;

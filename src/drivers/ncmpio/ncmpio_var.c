@@ -496,12 +496,12 @@ err_check:
 #ifndef SEARCH_NAME_LINEARLY
     varp->attrs.hash_size = ncp->hash_size_attr;
 
-    /* allocate hashing lookup table, if not allocated yet */
-    if (ncp->vars.nameT == NULL)
-        ncp->vars.nameT = NCI_Calloc(ncp->vars.hash_size, sizeof(NC_nametable));
+    // /* allocate hashing lookup table, if not allocated yet */
+    // if (ncp->vars.nameT == NULL)
+    //     ncp->vars.nameT = NCI_Calloc(ncp->vars.hash_size, sizeof(NC_nametable));
 
-    /* insert nname to the lookup table */
-    ncmpio_hash_insert(ncp->vars.nameT, ncp->vars.hash_size, nname, varp->varid);
+    // /* insert nname to the lookup table */
+    // ncmpio_hash_insert(ncp->vars.nameT, ncp->vars.hash_size, nname, varp->varid);
 #endif
 
     if (varidp != NULL) *varidp = varp->varid;
