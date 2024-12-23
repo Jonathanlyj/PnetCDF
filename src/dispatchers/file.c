@@ -1810,18 +1810,14 @@ ncmpi_enddef(int ncid) {
         local_nvars = all_recv_hdr[i]->vars.ndefined;
 
         for (int j = 0; j < local_ndims; ++j){
-            // all_recv_hdr[i]_ptr->dims.value[j]->rank_id = i;
-            // all_recv_hdr[i]_ptr->dims.value[j]->ranklocal_id = j;
-            // all_recv_hdr[i]_ptr->dims.value[j]->global_id = -99;
+
             all_recv_hdr[i]->dims.value[j]->rank_id = i;
             all_recv_hdr[i]->dims.value[j]->ranklocal_id = j;
             all_recv_hdr[i]->dims.value[j]->global_id = -99;
         }
 
         for (int j = 0; j < local_nvars; ++j){
-            // all_recv_hdr[i]_ptr->vars.value[j]->rank_id = i;
-            // all_recv_hdr[i]_ptr->vars.value[j]->ranklocal_id = j;
-            // all_recv_hdr[i]_ptr->vars.value[j]->global_id = -99;
+
             all_recv_hdr[i]->vars.value[j]->rank_id = i;
             all_recv_hdr[i]->vars.value[j]->ranklocal_id = j;
             all_recv_hdr[i]->vars.value[j]->global_id = -99;
@@ -1902,10 +1898,6 @@ ncmpi_enddef(int ncid) {
     ncmpio_free_NC_vararray(old_vararray);
     NCI_Free(old_vararray);
     NCI_Free(old_dimarray);
-
-
-
-
     NCI_Free(all_collections_buffer);
     NCI_Free(all_collection_sizes);
     NCI_Free(recv_displs);
