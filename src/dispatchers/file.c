@@ -1738,6 +1738,8 @@ ncmpi_enddef(int ncid) {
     struct hdr local_hdr;
     err = baseline_extract_meta(pncp->ncp, &local_hdr);
     // printf("%s\n", local_hdr->dims.value[0]->name);
+    pnetcdf_check_crt_mem(pncp->comm, 0);
+
     int rank, nproc;
     MPI_Comm_rank(pncp->comm, &rank);
     MPI_Comm_size(pncp->comm, &nproc);
@@ -1764,6 +1766,7 @@ ncmpi_enddef(int ncid) {
     // }
     char* send_buffer = (char*) NCI_Malloc(local_hdr.xsz);
     err = serialize_hdr(&local_hdr, send_buffer);
+    pnetcdf_check_crt_mem(pncp->comm,  1);
 
     /* ---------------------------------------------- META: Communicate metadata size----------------------------------------------*/
 
@@ -1796,6 +1799,8 @@ ncmpi_enddef(int ncid) {
     NCI_Free(send_buffer);
     ncmpio_free_NC_vararray(&ncp->vars);
     ncmpio_free_NC_dimarray(&ncp->dims);
+    pnetcdf_check_crt_mem(pncp->comm, 2);
+
     
 
   /* ---------------------------------------------- META: Deseralize metadata ----------------------------------------------*/
