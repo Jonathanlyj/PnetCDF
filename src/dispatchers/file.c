@@ -1618,7 +1618,9 @@ ncmpi_enddef(int ncid) {
     int err=NC_NOERR;
     MPI_Offset malloc_size;
     PNC *pncp;
-
+    double start_tim, end_tim0, end_tim1, end_tim;
+    double comm_time, define_time, io_time;
+    start_tim = MPI_Wtime();
     /* check if ncid is valid */
     err = PNC_check_id(ncid, &pncp);
     if (err != NC_NOERR) return err;
@@ -1787,7 +1789,7 @@ ncmpi_enddef(int ncid) {
 
     }
     //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5);
-
+    end_tim0 = MPI_Wtime();
 
     for (int i = 0; i < size; ++i) {
         err = add_hdr(recv_hdrs[i], i, rank, pncp, old_dimarray, old_vararray);
@@ -1833,6 +1835,7 @@ ncmpi_enddef(int ncid) {
     // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5+size+1);
 
     /* calling the subroutine that implements ncmpi_enddef() */
+    end_tim1 = MPI_Wtime();
     err = pncp->driver->enddef(pncp->ncp);
 
     if (err != NC_NOERR) return err;
@@ -1840,6 +1843,17 @@ ncmpi_enddef(int ncid) {
     fClr(pncp->flag, NC_MODE_INDEP); /* default enters collective data mode */
     fClr(pncp->flag, NC_MODE_DEF);
     // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 3);
+    end_tim = MPI_Wtime();
+    comm_time = end_tim0 - start_tim;
+    define_time = end_tim1 - end_tim0;
+    io_time = end_tim - end_tim1;
+    if (rank == 0) {
+        printf("Enddef: comm_time: %f, define_time: %f, io_time: %f\n", comm_time, define_time, io_time);
+        //print just the value, one per line
+        printf("%f\n", comm_time);
+        printf("%f\n", define_time);
+        printf("%f\n", io_time);
+    }
  
     return NC_NOERR;
 }
