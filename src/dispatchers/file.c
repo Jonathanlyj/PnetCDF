@@ -135,7 +135,7 @@ static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
         file_info->xsz += sizeof(uint32_t); //size
     }
     // ncmpio_free_NC_dimarray(&ncp->dims);
-    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 101);
+    //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 101);
 
     // Variables
     file_info->vars.ndefined = ncp->vars.ndefined; 
@@ -189,7 +189,7 @@ static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
         file_info->vars.value[i] = var_info;
 
     }
-    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 102);
+    //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 102);
     // ncmpio_free_NC_vararray(&ncp->vars);
 
     return err;
@@ -1650,11 +1650,11 @@ ncmpi_enddef(int ncid) {
     err = shallow_dup_NC_vararray(old_vararray, &ncp->vars, ncp->hash_size_attr);
     if (err != NC_NOERR) return err;
     
-    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 0); 
+    // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 0); 
     struct hdr local_hdr;
-    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 0);
+    //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 0);
     err = baseline_extract_meta(pncp->ncp, &local_hdr); // this step doesn't free the dims and vars in ncp
-    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 1);
+    //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 1);
 
 
     int rank, size;
@@ -1684,19 +1684,19 @@ ncmpi_enddef(int ncid) {
     //     }
     // }
     // }
-    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 1);
+    // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 1);
     char* send_buffer = (char*) NCI_Malloc(local_hdr.xsz);
     // if (rank == 0)
     //     printf("local_hdr size/MB: %d\n", local_hdr.xsz/1048576);
     
     err = serialize_hdr(&local_hdr, send_buffer);
-    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 1);
-    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 2);
+    //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 1);
+    // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 2);
     
     // free_hdr_vararray(&local_hdr.vars);
     // free_hdr_dimarray(&local_hdr.dims);
    
-    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 3);
+    // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 3);
     /* ---------------------------------------------- META: Communicate metadata size----------------------------------------------*/
 
   // Phase 1: Communicate the sizes of the header structure for each process
@@ -1726,12 +1726,12 @@ ncmpi_enddef(int ncid) {
     // Phase 2: Communicate the actual header data
     // Before MPI_Allgatherv
     TRACE_COMM(MPI_Allgatherv)(send_buffer, local_hdr.xsz, MPI_BYTE, all_collections_buffer, recvcounts, recv_displs, MPI_BYTE, pncp->comm);
-    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 4);
+    // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 4);
     NCI_Free(send_buffer);
     ncmpio_free_NC_vararray(&ncp->vars);
     ncmpio_free_NC_dimarray(&ncp->dims);
-    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 2);
-    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5);
+    //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 2);
+    // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5);
     
   /* ---------------------------------------------- META: Deseralize metadata ----------------------------------------------*/
 
@@ -1768,25 +1768,25 @@ ncmpi_enddef(int ncid) {
     //     if (i==size-1)
     //         NCI_Free(all_collections_buffer);
     //     err = add_hdr(recv_hdr, i, rank, pncp, old_dimarray, old_vararray);
-    //     // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5+i+1);
+    //     // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5+i+1);
     //     free_hdr(recv_hdr);
     //     if (err != NC_NOERR) return err;
     // }
 
-    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 4);
+    //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 4);
     struct hdr **recv_hdrs = (struct hdr**)NCI_Malloc(size * sizeof(struct hdr*));
 
     for (int i = 0; i < size; ++i) {
-        pnetcdf_check_crt_mem(MPI_COMM_WORLD, 43);
+        //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 43);
         recv_hdrs[i]= (struct hdr*)NCI_Malloc(sizeof(struct hdr));
         // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
         deserialize_hdr(recv_hdrs[i], all_collections_buffer + recv_displs[i], recvcounts[i]);
            
         // err = add_hdr(recv_hdr, i, rank, pncp, old_dimarray, old_vararray);
-        pnetcdf_check_crt_mem(MPI_COMM_WORLD, 44);
+        //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 44);
 
     }
-    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5);
+    //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5);
 
 
     for (int i = 0; i < size; ++i) {
@@ -1794,7 +1794,7 @@ ncmpi_enddef(int ncid) {
         if (err != NC_NOERR) return err;
         // free_hdr(recv_hdrs[i]);
     }
-    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 6);
+    //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 6);
 
     for (int i = 0; i < size; ++i) {
         free_hdr(recv_hdrs[i]);
@@ -1830,7 +1830,7 @@ ncmpi_enddef(int ncid) {
 
 
 
-    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5+size+1);
+    // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5+size+1);
 
     /* calling the subroutine that implements ncmpi_enddef() */
     err = pncp->driver->enddef(pncp->ncp);
@@ -1839,7 +1839,7 @@ ncmpi_enddef(int ncid) {
 
     fClr(pncp->flag, NC_MODE_INDEP); /* default enters collective data mode */
     fClr(pncp->flag, NC_MODE_DEF);
-    // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 3);
+    // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 3);
  
     return NC_NOERR;
 }
