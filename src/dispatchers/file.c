@@ -118,9 +118,9 @@ static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
     // Dimensions
     file_info->dims.ndefined = ncp->dims.ndefined;
     file_info->dims.value = (hdr_dim **)NCI_Malloc(file_info->dims.ndefined * sizeof(hdr_dim *));
-    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 1001);
+
     file_info->xsz += 2 * sizeof(uint32_t); // NC_Dimension and nelems
-    printf("\n file_info->dims.ndefined %d", file_info->dims.ndefined);
+
     for (int i = 0; i < file_info->dims.ndefined; i++) {
         hdr_dim *dim_info = (hdr_dim *)NCI_Malloc(sizeof(hdr_dim));
         dim_info->size = ncp->dims.value[i]->size;
@@ -135,7 +135,7 @@ static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
     }
     // ncmpio_free_NC_dimarray(&ncp->dims);
 
-    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 101);
+
     // Variables
     file_info->vars.ndefined = ncp->vars.ndefined; 
     file_info->vars.value = (hdr_var **)NCI_Malloc(file_info->vars.ndefined * sizeof(hdr_var *));
@@ -188,7 +188,7 @@ static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
         file_info->vars.value[i] = var_info;
 
     }
-    pnetcdf_check_crt_mem(MPI_COMM_WORLD, 102);
+
     // ncmpio_free_NC_vararray(&ncp->vars);
 
     return err;
@@ -1739,10 +1739,10 @@ ncmpi_enddef(int ncid) {
     err = shallow_dup_NC_vararray(old_vararray, &ncp->vars, ncp->hash_size_attr);
     if (err != NC_NOERR) return err;
     struct hdr local_hdr;
-    pnetcdf_check_crt_mem(pncp->comm, 0);
+    // pnetcdf_check_crt_mem(pncp->comm, 0);
     err = baseline_extract_meta(pncp->ncp, &local_hdr);
     // printf("%s\n", local_hdr->dims.value[0]->name);
-    pnetcdf_check_crt_mem(pncp->comm, 1);
+    // pnetcdf_check_crt_mem(pncp->comm, 1);
 
     int rank, nproc;
     MPI_Comm_rank(pncp->comm, &rank);
@@ -1770,7 +1770,7 @@ ncmpi_enddef(int ncid) {
     // }
     char* send_buffer = (char*) NCI_Malloc(local_hdr.xsz);
     err = serialize_hdr(&local_hdr, send_buffer);
-    pnetcdf_check_crt_mem(pncp->comm,  1);
+    // pnetcdf_check_crt_mem(pncp->comm,  1);
 
     /* ---------------------------------------------- META: Communicate metadata size----------------------------------------------*/
 
@@ -1803,7 +1803,7 @@ ncmpi_enddef(int ncid) {
     NCI_Free(send_buffer);
     ncmpio_free_NC_vararray(&ncp->vars);
     ncmpio_free_NC_dimarray(&ncp->dims);
-    pnetcdf_check_crt_mem(pncp->comm, 2);
+    // pnetcdf_check_crt_mem(pncp->comm, 2);
 
     
 
@@ -1845,21 +1845,21 @@ ncmpi_enddef(int ncid) {
     hdr_var ** sort_vars = NULL;
     MPI_Offset malloc_size;
     //Check memory usage
-    pnetcdf_check_crt_mem(pncp->comm, 4);
+    // pnetcdf_check_crt_mem(pncp->comm, 4);
     int **dim_sort_map = (int **)NCI_Malloc(nproc * sizeof(int *));
     int **var_sort_map = (int **)NCI_Malloc(nproc * sizeof(int *));
-    pnetcdf_check_crt_mem(pncp->comm, 41);
+    // pnetcdf_check_crt_mem(pncp->comm, 41);
     struct hdr** all_recv_hdr = (struct hdr**)NCI_Malloc(nproc * sizeof(struct hdr*));
-    pnetcdf_check_crt_mem(pncp->comm, 42);
+    // pnetcdf_check_crt_mem(pncp->comm, 42);
     
     for (int i = 0; i < nproc; ++i) {
         // struct hdr recv_hdr;
-        pnetcdf_check_crt_mem(pncp->comm, 43);
+        // pnetcdf_check_crt_mem(pncp->comm, 43);
         all_recv_hdr[i] = (struct hdr *)NCI_Malloc(sizeof(struct hdr));
         deserialize_hdr(all_recv_hdr[i], all_collections_buffer + recv_displs[i], recvcounts[i]);
         local_ndims = all_recv_hdr[i]->dims.ndefined;
         local_nvars = all_recv_hdr[i]->vars.ndefined;
-        pnetcdf_check_crt_mem(pncp->comm, 44);
+        // pnetcdf_check_crt_mem(pncp->comm, 44);
         for (int j = 0; j < local_ndims; ++j){
 
             all_recv_hdr[i]->dims.value[j]->rank_id = i;
@@ -1905,7 +1905,7 @@ ncmpi_enddef(int ncid) {
 
     
     //start construct the combined hdr structure
-    pnetcdf_check_crt_mem(pncp->comm, 5);
+    // pnetcdf_check_crt_mem(pncp->comm, 5);
     for (int i = 0; i < nproc; ++i) {
         // struct hdr *recv_hdr = (struct hdr*)NCI_Malloc(sizeof(struct hdr));
         // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
@@ -1914,7 +1914,7 @@ ncmpi_enddef(int ncid) {
         // free_hdr(&all_recv_hdr[i]);
         if (err != NC_NOERR) return err;
     }
-    pnetcdf_check_crt_mem(pncp->comm, 6);
+    // pnetcdf_check_crt_mem(pncp->comm, 6);
     ncp->dims.nameT = NULL;
     ncp->vars.nameT = NULL;
     // No need ti create hash table, as we now use sorting to do consistency check
