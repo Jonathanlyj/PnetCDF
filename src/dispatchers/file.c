@@ -1708,7 +1708,9 @@ int
 ncmpi_enddef(int ncid) {
     int err=NC_NOERR;
     PNC *pncp;
-
+    double start_tim, end_tim0, end_tim1, end_tim;
+    double comm_time, define_time, io_time;
+    start_tim = MPI_Wtime();
     /* check if ncid is valid */
     err = PNC_check_id(ncid, &pncp);
     if (err != NC_NOERR) return err;
@@ -1887,7 +1889,7 @@ ncmpi_enddef(int ncid) {
         var_sort_map[i] = (int *)NCI_Malloc(local_nvars * sizeof(int));
 
     }
-
+    end_tim0 = MPI_Wtime();
     //sort dim array based on customized compare function
     qsort(sort_dims, total_ndims, sizeof(hdr_dim*), compare_dim);
     //create mapping from rank, rank_local_id to the index in sorted array
@@ -1960,7 +1962,7 @@ ncmpi_enddef(int ncid) {
     NCI_Free(recvcounts);
 
 
-
+    end_tim1 = MPI_Wtime();
     /* calling the subroutine that implements ncmpi_enddef() */
     err = pncp->driver->enddef(pncp->ncp);
 
@@ -1968,6 +1970,18 @@ ncmpi_enddef(int ncid) {
 
     fClr(pncp->flag, NC_MODE_INDEP); /* default enters collective data mode */
     fClr(pncp->flag, NC_MODE_DEF);
+    end_tim = MPI_Wtime();
+
+    comm_time = end_tim0 - start_tim;
+    define_time = end_tim1 - end_tim0;
+    io_time = end_tim - end_tim1;
+    if (rank == 0) {
+        printf("Enddef: comm_time: %f, define_time: %f, io_time: %f\n", comm_time, define_time, io_time);
+        //print just the value, one per line
+        printf("%f\n", comm_time);
+        printf("%f\n", define_time);
+        printf("%f\n", io_time);
+    }
  
     return NC_NOERR;
 }
