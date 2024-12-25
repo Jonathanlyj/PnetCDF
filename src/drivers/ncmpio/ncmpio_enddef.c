@@ -1462,6 +1462,9 @@ ncmpio__enddef(void       *ncdp,
     int rank, nproc;
     char value[MPI_MAX_INFO_VAL];
     NC *ncp = (NC*)ncdp;
+    double start_tim, end_tim0,  end_tim1, end_tim;
+    double comm_time, define_time, io_time;
+    start_tim = MPI_Wtime();
     
     // printf("\npncp->ncp->xsz: %lld\n", ncp->xsz);
     
@@ -1686,7 +1689,7 @@ ncmpio__enddef(void       *ncdp,
         ncp->blocks.localids[ncp->blocks.globalids[i]] = i;
     }
 
-
+    end_tim0 = MPI_Wtime();
     //STEP4: Deseralize buffer to global block array (only name and block size info)
     err = deserialize_bufferinfo_array(ncp, all_collections_buffer, recv_displs, new_block_offsets, total_recv_size, nproc, rank);
     CHECK_ERROR(err)
@@ -1772,6 +1775,7 @@ ncmpio__enddef(void       *ncdp,
      * writes the header to file. Note safe_mode error check will be done in
      * write_NC() */
     // if (rank == 1) printf("\nbefore write NC ncp->global_xsz: %lld", ncp->global_xsz);
+    end_tim1 = MPI_Wtime();
     status = write_NC(ncp);
 
     /* we should continue to exit define mode, even if header is inconsistent
@@ -1805,6 +1809,17 @@ ncmpio__enddef(void       *ncdp,
         fClr(ncp->ncp_sf->flags, NC_MODE_CREATE | NC_MODE_DEF);
 #endif
    
+    end_tim = MPI_Wtime();
+    comm_time = end_tim0 - start_tim;
+    define_time = end_tim1 - end_tim0;
+    io_time = end_tim - end_tim1;
+    if (rank == 0) {
+        printf("Enddef: comm_time: %f, define_time: %f, io_time: %f\n", comm_time, define_time, io_time);
+        //print just the value, one per line
+        printf("%f\n", comm_time);
+        printf("%f\n", define_time);
+        printf("%f\n", io_time);
+    }
     return status;
 }
 
