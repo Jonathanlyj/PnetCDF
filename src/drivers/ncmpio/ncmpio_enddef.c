@@ -458,6 +458,7 @@ hdr_get_NC_modified_blockarray(bufferinfo *pbp, NC *ncp, int src_rank, int *new_
         /* create a normalized character string */
         status = ncmpii_utf8_normalize(block_name, &nname);
         if (status != NC_NOERR) return status;
+        
         if (block_id >= ncpb->nread){
         /* for new block: check if the name string is previously used */
             status = ncmpio_inq_blkid(ncp, block_name, NULL);
@@ -1670,8 +1671,11 @@ ncmpio__enddef(void       *ncdp,
 
     for(int i=ncp->blocks.nread; i<ncp->blocks.ndefined;i++){
         if (new_block_offsets[rank] > 0){
+            ncmpio_hash_delete(ncp->blocks.nameT, ncp->blocks.hash_size, ncp->blocks.value[i]->name, i);
+            ncmpio_hash_insert(ncp->blocks.nameT, ncp->blocks.hash_size, ncp->blocks.value[i]->name, i + new_block_offsets[rank]);
             ncp->blocks.value[i + new_block_offsets[rank]] = ncp->blocks.value[i];
             ncp->blocks.value[i] = NULL;
+            
         }
         ncp->blocks.globalids[i] = i +  new_block_offsets[rank];
     }

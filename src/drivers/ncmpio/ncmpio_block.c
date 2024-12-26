@@ -128,8 +128,17 @@ NC_findblk(const NC_blockarray *ncap,
 
     /* check the list using linear search */
     nchars = strlen(name);
+    // int rank;
+    // MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     for (i=0; i<ncap->nameT[key].num; i++) {
         blkid = ncap->nameT[key].list[i];
+        // if (rank==412){
+        //     printf("blkid: %d\n", blkid);
+        //     printf("name: %s\n", name);
+            // printf("ncap->value[blkid]->name: %s\n", ncap->value[blkid]->name);
+            // printf("ncap->value[blkid]->name_len: %d\n", ncap->value[blkid]->name_len);
+
+        // }
         if (ncap->value[blkid]->name_len == nchars &&
             strcmp(name, ncap->value[blkid]->name) == 0) {
             if (blkidp != NULL) *blkidp = blkid;

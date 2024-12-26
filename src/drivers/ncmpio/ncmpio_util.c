@@ -224,7 +224,7 @@ void ncmpio_set_pnetcdf_hints(NC *ncp,
     if (!flag) sprintf(value, "%d", PNC_HSIZE_VAR);
     MPI_Info_set(info_used, "nc_hash_size_var", value);
 
-    //META:
+    //META:set blocks default hash size as dim hash size 
     ncp->blocks.hash_size = PNC_HSIZE_DIM;
 
     ncp->attrs.hash_size = PNC_HSIZE_GATTR;
