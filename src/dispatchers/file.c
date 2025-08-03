@@ -1848,11 +1848,14 @@ ncmpi_enddef(int ncid) {
     define_time = end_tim1 - end_tim0;
     io_time = end_tim - end_tim1;
     if (rank == 0) {
-        printf("Enddef: comm_time: %f, define_time: %f, io_time: %f\n", comm_time, define_time, io_time);
+        printf("[PnetCDF] End-define Phase Timings (seconds):\n");
+        printf("  - Metadata Exchange        : %8.6f\n", comm_time);
+        printf("  - Metadata consistency check : %8.6f\n", define_time);
+        printf("  - Metadata Write I/O       : %8.6f\n", io_time);
         //print just the value, one per line
-        printf("%f\n", comm_time);
-        printf("%f\n", define_time);
-        printf("%f\n", io_time);
+        // printf("%f\n", comm_time);
+        // printf("%f\n", define_time);
+        // printf("%f\n", io_time);
     }
  
     return NC_NOERR;

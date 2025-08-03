@@ -75,8 +75,8 @@ ncmpio_free_NC(NC *ncp)
     double other_free_time = MPI_Wtime() - other_start;
 
     NCI_Free(ncp);
-    if (rank == 0)
-        printf("dim_free_time: %f, var_free_time: %f, other_free_time: %f\n", dim_free_time, var_free_time, other_free_time);
+    // if (rank == 0)
+    //     printf("dim_free_time: %f, var_free_time: %f, other_free_time: %f\n", dim_free_time, var_free_time, other_free_time);
 }
 
 /*----< ncmpio_close_files() >-----------------------------------------------*/
