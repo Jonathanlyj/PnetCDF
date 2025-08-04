@@ -1377,7 +1377,7 @@ hdr_get_NC_blockarray(bufferinfo *gbp, NC *ncp)
 #endif
         DEBUG_RETURN_ERROR(NC_ENOTNC)
     }
-    alloc_size = _RNDUP(ndefined, PNC_ARRAY_GROWBY);
+    alloc_size = PNETCDF_RNDUP(ndefined, PNC_ARRAY_GROWBY);
     ncp->blocks.value = (NC_block**) NCI_Calloc(alloc_size, sizeof(NC_block*));
     ncp->blocks.localids = (int*) NCI_Calloc(alloc_size, sizeof(int));
     ncp->blocks.globalids = (int*) NCI_Calloc(alloc_size, sizeof(int));
@@ -1482,7 +1482,7 @@ hdr_len_NC_blockinfo(const NC_block *blockp, int sizeof_NON_NEG, int sizeof_off_
      *               <non-negative INT64>  // CDF-5
      */
     MPI_Offset xlen;
-    xlen = sizeof_NON_NEG + _RNDUP(blockp->name_len, X_ALIGN); //name
+    xlen = sizeof_NON_NEG + PNETCDF_RNDUP(blockp->name_len, X_ALIGN); //name
     xlen += sizeof_off_t; // OFFSET
     xlen += sizeof_NON_NEG; // bsize
     xlen += sizeof_NON_NEG; // size of block_var_len
@@ -1763,10 +1763,14 @@ ncmpio_local_hdr_get_NC(NC *ncp, int blkid)
     //  getbuf.offset       = 0;
     getbuf.offset        = ncp->blocks.value[blkid]->begin;   /* read from start of the block */
     getbuf.safe_mode     = ncp->safe_mode;
-    getbuf.rw_mode       = (fIsSet(ncp->flags, NC_HCOLL)) ? 1 : 0;
+    // getbuf.rw_mode       = (fIsSet(ncp->flags, NC_HCOLL)) ? 1 : 0;
+    if (ncp->nprocs > 1 && fIsSet(ncp->flags, NC_HCOLL))
+        getbuf.coll_mode = 1;
+    else
+        getbuf.coll_mode = 0;
 
     /* CDF-5's minimum header size is 4 bytes more than CDF-1 and CDF-2's */
-    getbuf.chunk = _RNDUP( MAX(MIN_NC_XSZ+4, ncp->chunk), X_ALIGN );
+    getbuf.chunk = PNETCDF_RNDUP( MAX(MIN_NC_XSZ+4, ncp->chunk), X_ALIGN );
 
     getbuf.base = (char*) NCI_Malloc(getbuf.chunk);
     getbuf.pos  = getbuf.base;
@@ -1853,7 +1857,7 @@ fn_exit:
 //     getbuf.rw_mode       = (fIsSet(ncp->flags, NC_HCOLL)) ? 1 : 0;
 
 //     /* CDF-5's minimum header size is 4 bytes more than CDF-1 and CDF-2's */
-//     getbuf.chunk = _RNDUP( MAX(MIN_NC_XSZ+4, ncp->chunk), X_ALIGN );
+//     getbuf.chunk = PNETCDF_RNDUP( MAX(MIN_NC_XSZ+4, ncp->chunk), X_ALIGN );
 
 //     getbuf.base = (char*) NCI_Malloc(getbuf.chunk);
 //     getbuf.pos  = getbuf.base;

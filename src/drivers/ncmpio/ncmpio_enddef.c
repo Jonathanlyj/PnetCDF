@@ -362,7 +362,7 @@ hdr_len_NC_modified_blockarray(const NC_blockarray *ncpb) {
         for (int i = 0; i < ncpb->ndefined; i++) {
             if (ncpb->value[i]->modified) {
                 buffer_size += sizeof(uint32_t); // block ID
-                buffer_size += sizeof(uint32_t) + _RNDUP(ncpb->value[i]->name_len, X_ALIGN); 
+                buffer_size += sizeof(uint32_t) + PNETCDF_RNDUP(ncpb->value[i]->name_len, X_ALIGN); 
                 buffer_size += sizeof(uint32_t); // block size
                 buffer_size += sizeof(uint32_t); // block non-record var size
                 buffer_size += sizeof(uint32_t); // block record var size
@@ -379,7 +379,7 @@ static int deserialize_bufferinfo_array(NC *ncp, void *buf, int *recv_displs, in
     int err;
     recvbuff.pos           = buf;
     recvbuff.base          = buf;
-    recvbuff.chunk = _RNDUP( MAX(MIN_NC_XSZ+4, ncp->chunk), X_ALIGN );
+    recvbuff.chunk = PNETCDF_RNDUP( MAX(MIN_NC_XSZ+4, ncp->chunk), X_ALIGN );
     //always use version 1 or 2 for using uinit32
 
     recvbuff.version      = 1;
@@ -760,6 +760,7 @@ write_NC(NC *ncp)
     int status=NC_NOERR, mpireturn, err, rank, is_coll;
     MPI_Offset i, global_header_wlen, local_header_wlen, ntimes;
     MPI_Status mpistatus;
+    MPI_File fh;
 
     assert(!NC_readonly(ncp));
 
@@ -790,7 +791,7 @@ write_NC(NC *ncp)
     // header_wlen = ncp->xsz;
 // #endif
     global_header_wlen = ncp->global_xsz;
-    global_header_wlen = _RNDUP(global_header_wlen, X_ALIGN);
+    global_header_wlen = PNETCDF_RNDUP(global_header_wlen, X_ALIGN);
     
 
     /* if header_wlen is > NC_MAX_INT, then write the header in chunks.
@@ -847,7 +848,7 @@ write_NC(NC *ncp)
         for (i=0; i<ntimes; i++) {
             int bufCount = (int) MIN(remain, NC_MAX_INT);
             // printf("\nwrite global header at offset %lld, bufCount: %d", offset, bufCount);
-            if (fIsSet(ncp->flags, NC_HCOLL))
+            if (is_coll)
                 TRACE_IO(MPI_File_write_at_all)(ncp->collective_fh, offset, buf_ptr,
                                                 bufCount, MPI_BYTE, &mpistatus);
             else
@@ -877,7 +878,7 @@ write_NC(NC *ncp)
         NCI_Free(buf);
 
     }
-    else if (fIsSet(ncp->flags, NC_HCOLL)) {
+    else if (is_coll) {
         /* other processes participate the collective call */
 
         for (i=0; i<ntimes; i++)
@@ -906,7 +907,7 @@ write_NC(NC *ncp)
         memdisps[0] = 0;
         for (int i = 0; i < ncp->blocks.ndefined; i++){
             if (ncp->blocks.value[i]->modified){
-                local_header_wlen = _RNDUP(ncp->blocks.value[i]->xsz, X_ALIGN);
+                local_header_wlen = PNETCDF_RNDUP(ncp->blocks.value[i]->xsz, X_ALIGN);
                 blocklens[j] = local_header_wlen;
                 local_bufs[j] = (char*)NCI_Malloc(local_header_wlen);
                 status = ncmpio_local_hdr_put_NC(ncp, local_bufs[j], i);
@@ -933,7 +934,7 @@ write_NC(NC *ncp)
 
         TRACE_IO(MPI_File_set_view)(ncp->collective_fh, 0, MPI_BYTE, filetype, "native", MPI_INFO_NULL);
         MPI_Type_free(&filetype);
-        if (fIsSet(ncp->flags, NC_HCOLL)) 
+        if (is_coll) 
             TRACE_IO(MPI_File_write_at_all)(ncp->collective_fh, 0, local_bufs[0], 1, memtype, &mpistatus);
         else
             TRACE_IO(MPI_File_write_at)(ncp->collective_fh, 0, local_bufs[0], 1, memtype, &mpistatus);
@@ -947,13 +948,13 @@ write_NC(NC *ncp)
         MPI_Type_commit(&emptytype);
         TRACE_IO(MPI_File_set_view)(ncp->collective_fh, 0, MPI_BYTE, emptytype, "native", MPI_INFO_NULL);
         MPI_Type_free(&emptytype);
-        if (fIsSet(ncp->flags, NC_HCOLL))
+        if (is_coll)
             TRACE_IO(MPI_File_write_at_all)(ncp->collective_fh, 0, NULL, 0, MPI_BYTE, &mpistatus);
     }
         
     double write_time = MPI_Wtime() - start_write;
 
-    if (rank == 0) printf("Inside ncmpi_enddef mpi write time: %f\n", write_time);
+    // if (rank == 0) printf("Inside ncmpi_enddef mpi write time: %f\n", write_time);
         
     
 
@@ -968,7 +969,7 @@ write_NC(NC *ncp)
     //         continue;
     //     } //skip the block that hasn't been modified
     //     char *local_buf=NULL, *local_buf_ptr;
-    //     local_header_wlen = _RNDUP(ncp->blocks.value[i]->xsz, X_ALIGN);
+    //     local_header_wlen = PNETCDF_RNDUP(ncp->blocks.value[i]->xsz, X_ALIGN);
     //     local_buf = (char*)NCI_Malloc(local_header_wlen);
     //     status = ncmpio_local_hdr_put_NC(ncp, local_buf, i);
     //     if (status != NC_NOERR) /* a fatal error */
@@ -1481,7 +1482,7 @@ ncmpio__enddef(void       *ncdp,
     NC *ncp = (NC*)ncdp;
     double start_tim, end_tim0,  end_tim1, end_tim;
     double comm_time, define_time, io_time;
-    start_tim = MPI_Wtime();
+    
     
     // printf("\npncp->ncp->xsz: %lld\n", ncp->xsz);
     
@@ -1646,6 +1647,7 @@ ncmpio__enddef(void       *ncdp,
     char* local_buff = (char*) NCI_Malloc(local_buff_size);
     err = serialize_bufferinfo_array(ncp, local_buff);
     CHECK_ERROR(err);
+    start_tim = MPI_Wtime();
   // Communicate the sizes of the header structure for each process
     MPI_Offset* all_collection_sizes = (MPI_Offset*) NCI_Malloc(nproc * sizeof(MPI_Offset));
     TRACE_COMM(MPI_Allgather)(&local_buff_size, 1, MPI_OFFSET, all_collection_sizes, 1, MPI_OFFSET, ncp->comm);
@@ -1834,11 +1836,10 @@ ncmpio__enddef(void       *ncdp,
     define_time = end_tim1 - end_tim0;
     io_time = end_tim - end_tim1;
     if (rank == 0) {
-        printf("Enddef: comm_time: %f, define_time: %f, io_time: %f\n", comm_time, define_time, io_time);
-        //print just the value, one per line
-        printf("%f\n", comm_time);
-        printf("%f\n", define_time);
-        printf("%f\n", io_time);
+        printf("[PnetCDF] End-define Phase Timings (seconds):\n");
+        printf("  - %-30s: %.6f\n", "Metadata Exchange", comm_time);
+        printf("  - %-30s: %.6f\n", "Consistency check (inter-metadata block and shared metadata block)", define_time);
+        printf("  - %-30s: %.6f\n", "Metadata Write I/O", io_time);
     }
     return status;
 }

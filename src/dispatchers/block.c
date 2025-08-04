@@ -213,7 +213,7 @@ ncmpi_open_block(int ncid, int blkid){
      */
 
     /* allocate chunk size for pncp->blocks[blkid]->vars[] */
-    nalloc = _RNDUP(pncp->blocks[blkid].nvars, PNC_VARS_CHUNK);
+    nalloc = PNETCDF_RNDUP(pncp->blocks[blkid].nvars, PNC_VARS_CHUNK);
     pncp->blocks[blkid].vars = NCI_Malloc(nalloc * sizeof(PNC_var));
     if (pncp->blocks[blkid].vars == NULL) {
         DEBUG_ASSIGN_ERROR(err, NC_ENOMEM)

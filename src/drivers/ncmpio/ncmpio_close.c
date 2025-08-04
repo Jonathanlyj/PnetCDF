@@ -246,14 +246,14 @@ ncmpio_close(void *ncdp)
 //     }
 
     /* free up space occupied by the header metadata */
-    int myrank;
-    MPI_Comm_rank(ncp->comm, &myrank);
-    double start_timer = MPI_Wtime();
+    // int myrank;
+    // MPI_Comm_rank(ncp->comm, &myrank);
+    // double start_timer = MPI_Wtime();
     ncmpio_free_NC(ncp);
-    double free_time = MPI_Wtime() - start_timer;
-    if (myrank == 0) {
-        printf("Free ncp time: %f\n", free_time);
-    }
+    // double free_time = MPI_Wtime() - start_timer;
+    // if (myrank == 0) {
+    //     printf("Free ncp time: %f\n", free_time);
+    // }
 
     return status;
 }

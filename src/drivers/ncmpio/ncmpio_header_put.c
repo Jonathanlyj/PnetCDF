@@ -534,7 +534,11 @@ ncmpio_global_hdr_put_NC(NC *ncp, void *buf)
     putbuf.pos           = buf;
     putbuf.base          = buf;
     putbuf.safe_mode     = ncp->safe_mode;
-    putbuf.rw_mode       = (fIsSet(ncp->flags, NC_HCOLL)) ? 1 : 0;
+    // putbuf.rw_mode       = (fIsSet(ncp->flags, NC_HCOLL)) ? 1 : 0;
+    if (ncp->nprocs > 1 && fIsSet(ncp->flags, NC_HCOLL))
+        putbuf.coll_mode = 1;
+    else
+        putbuf.coll_mode = 0;
 
     /* netCDF file format:
      * netcdf_file  = header  data
@@ -606,7 +610,11 @@ ncmpio_local_hdr_put_NC(NC *ncp, void *buf, int block_index)
     putbuf.pos           = buf;
     putbuf.base          = buf;
     putbuf.safe_mode     = ncp->safe_mode;
-    putbuf.rw_mode       = (fIsSet(ncp->flags, NC_HCOLL)) ? 1 : 0;
+    // putbuf.rw_mode       = (fIsSet(ncp->flags, NC_HCOLL)) ? 1 : 0;
+    if (ncp->nprocs > 1 && fIsSet(ncp->flags, NC_HCOLL))
+        putbuf.coll_mode = 1;
+    else
+        putbuf.coll_mode = 0;
 
     /* netCDF file format:
      * netcdf_file  = header  data

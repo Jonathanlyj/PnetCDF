@@ -234,7 +234,21 @@ void ncmpio_set_pnetcdf_hints(NC *ncp,
     MPI_Info_set(info_used, "nc_hash_size_var", value);
 
     //META:set blocks default hash size as dim hash size 
-    ncp->blocks.hash_size = PNC_HSIZE_DIM;
+    ncp->blocks.hash_size = PNC_HSIZE_BLK;
+    // if (user_info != MPI_INFO_NULL) {
+    //     /* Hash table size for blocks */
+    //     MPI_Info_get(user_info, "nc_hash_size_blk", MPI_MAX_INFO_VAL-1,
+    //                  value, &flag);
+    //     if (flag) {
+    //         errno = 0;  /* errno must set to zero before calling atoi */
+    //          ncp->blocks.hash_size = atoi(value);
+    //         if (errno != 0 ||  ncp->blocks.hash_size < 0)
+    //              ncp->blocks.hash_size = PNC_HSIZE_BLK;
+    //         sprintf(value, "%d",  ncp->blocks.hash_size);
+    //     }
+    // }
+    // sprintf(value, "%d", ncp->blocks.hash_size);
+    // MPI_Info_set(info_used, "nc_hash_size_blk", value);
 
     ncp->attrs.hash_size = PNC_HSIZE_GATTR;
     if (user_info != MPI_INFO_NULL) {

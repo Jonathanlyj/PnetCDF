@@ -837,7 +837,7 @@ ncmpi_open(MPI_Comm    comm,
         goto fn_exit;
     }
     // /* allocate chunk size for pncp->vars[] */
-    // nalloc = _RNDUP(pncp->nvars, PNC_VARS_CHUNK);
+    // nalloc = PNETCDF_RNDUP(pncp->nvars, PNC_VARS_CHUNK);
     // pncp->vars = NCI_Malloc(nalloc * sizeof(PNC_var));
     // if (pncp->vars == NULL) {
     //     DEBUG_ASSIGN_ERROR(err, NC_ENOMEM)
