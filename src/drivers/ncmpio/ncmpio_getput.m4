@@ -36,7 +36,7 @@ dnl
 #include <assert.h>
 
 #include <mpi.h>
-
+#include "../drivers/ncmpio/ncmpio_NC.h"
 #include <pnc_debug.h>
 #include <common.h>
 #include "ncmpio_NC.h"

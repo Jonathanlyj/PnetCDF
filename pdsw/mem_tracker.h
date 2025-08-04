@@ -21,4 +21,6 @@ void free_allocation_struct(void);   // Free the internal allocation tracking li
 
 void* tracked_realloc(void* ptr, size_t new_size); // Reallocate memory and track it
 
+void pause_mem_tracking(void); // Pause memory tracking
+void resume_mem_tracking(void); // Resume memory tracking
 #endif // MEM_TRACKER_H

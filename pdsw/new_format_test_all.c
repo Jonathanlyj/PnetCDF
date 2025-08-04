@@ -290,6 +290,9 @@ int main(int argc, char *argv[]) {
     double enddef_time, close_time, end_to_end_time;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+#ifdef MEM_TRACKING
+    pause_mem_tracking();
+#endif
     if (argc < 3) {
         if (rank == 0)
             fprintf(stderr, "Usage: %s <source_file> <output_file>\n", argv[0]);
@@ -305,10 +308,10 @@ int main(int argc, char *argv[]) {
     //the following function's memory usage should be selectively tracked - production application dont need source file for metadata
     read_metadata_from_file(source_name, &all_hdr);
     struct hdr local_hdr;
+#ifdef MEM_TRACKING
+    resume_mem_tracking();
+#endif
     distribute_metadata(rank, nproc, &all_hdr, &local_hdr);
-    free_hdr_meta(&all_hdr);
-
-    
 
     int ncid, cmode;
     cmode = NC_64BIT_DATA | NC_CLOBBER;
@@ -318,7 +321,7 @@ int main(int argc, char *argv[]) {
     // strcat(filename, source_name + position);
     // if (rank==0) printf("\n%s\n", output_name);
     MPI_Barrier(MPI_COMM_WORLD);
-    start_time = MPI_Wtime();
+    
     MPI_Info info = MPI_INFO_NULL;
     MPI_Info_create(&info);
     // MPI_Info_set(info, "nc_hash_size_dim", "16777216");
@@ -331,8 +334,9 @@ int main(int argc, char *argv[]) {
     app_check_crt_mem(MPI_COMM_WORLD, 0);
     pnetcdf_check_crt_mem(MPI_COMM_WORLD, 0);
 #endif
+    start_time = MPI_Wtime();
     err = ncmpi_create(MPI_COMM_WORLD, output_name, cmode, info, &ncid); ERR
-    double create_time = MPI_Wtime() - start_time;
+    
     // MPI_Barrier(MPI_COMM_WORLD);
 
     // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
@@ -347,6 +351,7 @@ int main(int argc, char *argv[]) {
     // printf("\nrank %d, start %d, count %d\n", rank, start, count);
     start_time1 = MPI_Wtime();
     define_hdr_nf(&local_hdr, ncid, rank);
+    double create_time = MPI_Wtime() - start_time1;
 #ifdef MEM_TRACKING
     app_check_crt_mem(MPI_COMM_WORLD, 1);
     pnetcdf_check_crt_mem(MPI_COMM_WORLD, 1);
@@ -378,17 +383,34 @@ int main(int argc, char *argv[]) {
     end_to_end_time = end_time - start_time;
 
     free_hdr_meta(&local_hdr);
+#ifdef MEM_TRACKING
+    pause_mem_tracking();
+#endif
+    free_hdr_meta(&all_hdr);
 
-    double times[5] = {end_to_end_time, create_time,  enddef_time, close_time, total_def_time};
-    char *names[5] = {"end-end", "create (consistency check)", "enddef", "close", "def_dim/var"};
-    double max_times[5], min_times[5];
+    // double times[5] = {end_to_end_time, create_time,  enddef_time, close_time, total_def_time};
+    // char *names[5] = {"end-end", "create (consistency check)", "enddef", "close", "def_dim/var"};
+    // double max_times[5], min_times[5];
 
-    MPI_Reduce(&times[0], &max_times[0], 5, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-    MPI_Reduce(&times[0], &min_times[0], 5, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
-    for (int i = 0; i < 5; i++) {
-        if (rank == 0) {
-            printf("Max %s time: %f seconds\n", names[i], max_times[i]);
-            printf("Min %s time: %f seconds\n", names[i], min_times[i]);
+    // MPI_Reduce(&times[0], &max_times[0], 5, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    // MPI_Reduce(&times[0], &min_times[0], 5, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
+    // for (int i = 0; i < 5; i++) {
+    //     if (rank == 0) {
+    //         printf("Max %s time: %f seconds\n", names[i], max_times[i]);
+    //         printf("Min %s time: %f seconds\n", names[i], min_times[i]);
+    //     }
+    // }
+    double times[4] = {end_to_end_time, create_time, enddef_time, close_time};
+    char *names[4] = {"End-to-End", "Metadata Consistency Check (intra-metadata block)", "End-define", "Close"};
+    double max_times[4];
+
+    MPI_Reduce(&times[0], &max_times[0], 4, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+
+    if (rank == 0) {
+        printf("[Application] Data Object Creation Timings (seconds):\n");
+        printf("  %-30s: %.6f\n", names[0], max_times[0]);
+        for (int i = 1; i < 4; i++) {
+            printf("  - %-30s: %.6f\n", names[i], max_times[i]);
         }
     }
 #ifdef MEM_TRACKING
@@ -396,6 +418,7 @@ int main(int argc, char *argv[]) {
     pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5);
     pnetcdf_check_mem_usage(MPI_COMM_WORLD);
     app_check_mem_usage(MPI_COMM_WORLD);
+    free_allocation_struct();
 #endif
     
     MPI_Finalize();

@@ -8,6 +8,9 @@
 static size_t current_memory_usage = 0;
 static size_t max_memory_usage = 0;
 
+// Global flag for tracking control
+static int tracking_enabled = 1;  // 1 = enabled, 0 = paused
+
 // Hash table constants
 #define HASH_TABLE_SIZE (1024 * 64)
 #define CHUNK_SIZE 1024  // Array grows by this size
@@ -120,7 +123,7 @@ char* tracked_strdup(const char* s) {
 // Wrapper for malloc
 void* tracked_malloc(size_t size) {
     void* ptr = malloc(size);
-    if (ptr) {
+    if (ptr && tracking_enabled) {
         add_allocation(ptr, size);
         current_memory_usage += size;
         if (current_memory_usage > max_memory_usage) {
@@ -132,11 +135,16 @@ void* tracked_malloc(size_t size) {
 
 // Wrapper for free
 void tracked_free(void* ptr) {
-    if (ptr) {
-        size_t size = remove_allocation(ptr);
-        current_memory_usage -= size;
+    if (tracking_enabled){
+        if (ptr) {
+            size_t size = remove_allocation(ptr);
+            current_memory_usage -= size;
+            free(ptr);
+        }
+    } else {
         free(ptr);
     }
+
 }
 
 // Returns current memory usage
@@ -189,4 +197,13 @@ void* tracked_realloc(void* ptr, size_t new_size) {
     add_allocation(new_ptr, new_size);
 
     return new_ptr;
+}
+
+// Call this to pause memory tracking (allocations still happen, but are not counted)
+void pause_mem_tracking(void) {
+    tracking_enabled = 0;
+}
+// Call this to resume memory tracking
+void resume_mem_tracking(void) {
+    tracking_enabled = 1;
 }

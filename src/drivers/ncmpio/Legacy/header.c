@@ -1617,6 +1617,9 @@ hdr_get_NC_vararray(bufferinfo  *gbp,
         ncap->value = (NC_var**) NCI_Malloc((size_t)ndefined * sizeof(NC_var*));
         if (ncap->value == NULL) DEBUG_RETURN_ERROR(NC_ENOMEM)
         ncap->nalloc = (int)ndefined;
+        /*META*/
+        ncap->localids = (int *) NCI_Malloc((size_t)ndefined * SIZEOF_INT);
+        ncap->indexes = (int *) NCI_Malloc((size_t)ndefined * SIZEOF_INT);
 
         /* get [var ...] */
         for (i=0; i<ndefined; i++) {
@@ -1627,6 +1630,8 @@ hdr_get_NC_vararray(bufferinfo  *gbp,
                 ncmpio_free_NC_vararray(ncap);
                 return status;
             }
+            ncap->localids[i] = i;
+            ncap->indexes[i] = i;
         }
     }
 

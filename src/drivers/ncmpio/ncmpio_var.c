@@ -32,24 +32,33 @@
 #include <ncx.h>
 #include "ncmpio_NC.h"
 
+int first_var = 1;
+
 /*----< ncmpio_free_NC_var() >-----------------------------------------------*/
 /* Free NC_var object */
 void
 ncmpio_free_NC_var(NC_var *varp)
 {
     if (varp == NULL) return;
+    // int old_free_counter = free_counter;
 
     ncmpio_free_NC_attrarray(&varp->attrs);
+    // if (first_var)
+    //     printf("1st var: free_counter after free ncmpio_free_NC_attrarray: %d\n", free_counter - old_free_counter);
     NCI_Free(varp->name);
 #ifdef ENABLE_SUBFILING
     if (varp->num_subfiles > 1) /* deallocate it */
         NCI_Free(varp->dimids_org);
 #endif
+    // if (first_var)
+    //     printf("1st var: free_counter after free varp->name: %d\n", free_counter - old_free_counter);
     if (varp->shape  != NULL) NCI_Free(varp->shape);
     if (varp->dsizes != NULL) NCI_Free(varp->dsizes);
     if (varp->dimids != NULL) NCI_Free(varp->dimids);
-
+    // if (first_var)
+    //     first_var = 0;
     NCI_Free(varp);
+
 }
 
 /*----< ncmpio_new_NC_var() >------------------------------------------------*/
@@ -131,7 +140,13 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
     int i;
 
     assert(ncap != NULL);
-
+    // printf("var ncap->ndefined: %d\n", ncap->ndefined);
+    // int old_free_counter = free_counter;
+    // first_var = 1;
+    // double start_time, free_var_array_time, free_var_extra_time, free_var_hash_time;
+    // start_time = MPI_Wtime();
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if (ncap->value != NULL) {
         /* when error is detected reading NC_VARIABLE tag, ncap->ndefined can
          * be > 0 and ncap->value is still NULL
@@ -139,12 +154,32 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
         for (i=0; i<ncap->ndefined; i++) {
             if (ncap->value[i] != NULL)
                 ncmpio_free_NC_var(ncap->value[i]);
+            // if (i==0)
+                // printf("number of frees after 1st free var: %d\n", free_counter - old_free_counter);
+            // if (i==100)
+                // printf("number of frees after 101st free var: %d\n", free_counter - old_free_counter);
         }
+
         NCI_Free(ncap->value);
+        // free_var_array_time = MPI_Wtime() - start_time;
+        // start_time = MPI_Wtime();
         ncap->value    = NULL;
+        // free_var_extra_time = MPI_Wtime() - start_time;
+        // printf("free_var_array_time: %f, free_var_extra_time: %f\n", free_var_array_time, free_var_extra_time);
+    }
+    if (ncap->localids != NULL) {
+        NCI_Free(ncap->localids);
+        ncap->localids = NULL;
+    }
+    if (ncap->indexes != NULL) {
+        NCI_Free(ncap->indexes);
+        ncap->indexes = NULL;
     }
     ncap->ndefined = 0;
-
+    ncap->nread = 0;
+    // printf("free_counter after free var array: %d\n", free_counter);
+    // start_time = MPI_Wtime();
+    // printf("vararray ncap->hash_size: %d\n", ncap->hash_size);
 #ifndef SEARCH_NAME_LINEARLY
     /* free space allocated for var name lookup table */
     if (ncap->nameT != NULL) {
@@ -154,6 +189,10 @@ ncmpio_free_NC_vararray(NC_vararray *ncap)
         ncap->hash_size = 0;
     }
 #endif
+    // free_var_hash_time = MPI_Wtime() - start_time;
+    // if (rank == 0)
+    //     printf("var: free_calls: %d\n", free_counter);
+    // printf("free_var_array_time: %f, free_var_extra_time: %f, free_var_hash_time: %f\n", free_var_array_time, free_var_extra_time, free_var_hash_time);
 }
 
 /*----< ncmpio_dup_NC_vararray() >-------------------------------------------*/
@@ -174,18 +213,31 @@ ncmpio_dup_NC_vararray(NC_vararray       *ncap,
         return NC_NOERR;
     }
 
+
+
     alloc_size = PNETCDF_RNDUP(ref->ndefined, PNC_ARRAY_GROWBY);
     ncap->value = (NC_var **) NCI_Calloc(alloc_size, sizeof(NC_var*));
+    ncap->localids = (int *)  NCI_Calloc(alloc_size, SIZEOF_INT);
+    ncap->indexes = (int *)  NCI_Calloc(alloc_size, SIZEOF_INT);
+
     if (ncap->value == NULL) DEBUG_RETURN_ERROR(NC_ENOMEM)
+    // memcpy(ncap->localids, ref->localids, alloc_size * SIZEOF_INT);
+    // memcpy(ncap->indexes, ref->indexes, alloc_size * SIZEOF_INT);
+
+
 
     /* duplicate one NC_var object at a time */
     ncap->ndefined = 0;
+    ncap->nread = ref->nread;
     for (i=0; i<ref->ndefined; i++) {
         ncap->value[i] = dup_NC_var(ref->value[i], attr_hsize);
         if (ncap->value[i] == NULL) {
             DEBUG_ASSIGN_ERROR(status, NC_ENOMEM)
             break;
         }
+
+        ncap->localids[i] = ref->localids[i];
+        ncap->indexes[i] = ref->indexes[i];
         ncap->ndefined++;
     }
     if (status != NC_NOERR) {
@@ -196,11 +248,15 @@ ncmpio_dup_NC_vararray(NC_vararray       *ncap,
 
 #ifndef SEARCH_NAME_LINEARLY
     /* allocate hashing lookup table, if not allocated yet */
-    if (ncap->nameT == NULL)
-        ncap->nameT = NCI_Calloc(ncap->hash_size, sizeof(NC_nametable));
+    ncap->hash_size = ref->hash_size;
+    if (ref->nameT != NULL) {
+        if (ncap->nameT == NULL)
+            ncap->nameT = NCI_Calloc(ncap->hash_size, sizeof(NC_nametable));
+        
+        /* duplicate var name lookup table */
+        ncmpio_hash_table_copy(ncap->nameT, ref->nameT, ncap->hash_size);
+    }
 
-    /* duplicate var name lookup table */
-    ncmpio_hash_table_copy(ncap->nameT, ref->nameT, ncap->hash_size);
 #endif
 
     return NC_NOERR;
@@ -288,6 +344,7 @@ ncmpio_NC_var_shape64(NC_var            *varp,
     if (varp->ndims == 0) goto out;
 
     /* determine shape[] of the variable */
+
     for (i=0; i<varp->ndims; i++) {
         /* For file create, varp->dimids[i] has been checked in ncmpi_def_var()
          * in dispatchers/variable.c. For file open, it has been checked in
@@ -363,10 +420,13 @@ ncmpio_def_var(void       *ncdp,
                const int  *dimids,
                int        *varidp)
 {
+
     int err=NC_NOERR;
     char *nname=NULL; /* normalized name */
     NC *ncp=(NC*)ncdp;
     NC_var *varp=NULL;
+    
+    
 
     /* create a normalized character string */
     err = ncmpii_utf8_normalize(name, &nname);
@@ -381,6 +441,7 @@ ncmpio_def_var(void       *ncdp,
     /* sanity check for xtype has been done at dispatchers */
     varp->xtype = xtype;
     ncmpii_xlen_nc_type(xtype, &varp->xsz);
+
 
     /* copy dimids[] */
     if (ndims != 0 && dimids != NULL)
@@ -399,6 +460,10 @@ ncmpio_def_var(void       *ncdp,
         size_t alloc_size = (size_t)ncp->vars.ndefined + PNC_ARRAY_GROWBY;
         ncp->vars.value = (NC_var **) NCI_Realloc(ncp->vars.value,
                                       alloc_size * sizeof(NC_var*));
+        ncp->vars.localids = (int*) NCI_Realloc(ncp->vars.localids,
+                                      alloc_size * SIZEOF_INT);
+        ncp->vars.indexes = (int*) NCI_Realloc(ncp->vars.indexes,
+                                      alloc_size * SIZEOF_INT);
         if (ncp->vars.value == NULL) {
             ncmpio_free_NC_var(varp);
             nname = NULL; /* already freed in ncmpio_free_NC_var() */
@@ -407,12 +472,16 @@ ncmpio_def_var(void       *ncdp,
         }
     }
 
-    varp->varid = ncp->vars.ndefined; /* varid */
 
+    varp->varid = ncp->vars.ndefined; /* varid */
     /* Add a new handle to the end of an array of handles */
     ncp->vars.value[ncp->vars.ndefined] = varp;
-
     ncp->vars.ndefined++;
+    /*META*/
+    ncp->vars.localids[varp->varid] = varp->varid;
+    ncp->vars.indexes[varp->varid] = varp->varid;
+
+
 
 err_check:
     if (ncp->safe_mode && ncp->nprocs > 1) {
@@ -440,12 +509,12 @@ err_check:
 #ifndef SEARCH_NAME_LINEARLY
     varp->attrs.hash_size = ncp->hash_size_attr;
 
-    /* allocate hashing lookup table, if not allocated yet */
-    if (ncp->vars.nameT == NULL)
-        ncp->vars.nameT = NCI_Calloc(ncp->vars.hash_size, sizeof(NC_nametable));
+    // /* allocate hashing lookup table, if not allocated yet */
+    // if (ncp->vars.nameT == NULL)
+    //     ncp->vars.nameT = NCI_Calloc(ncp->vars.hash_size, sizeof(NC_nametable));
 
-    /* insert nname to the lookup table */
-    ncmpio_hash_insert(ncp->vars.nameT, ncp->vars.hash_size, nname, varp->varid);
+    // /* insert nname to the lookup table */
+    // ncmpio_hash_insert(ncp->vars.nameT, ncp->vars.hash_size, nname, varp->varid);
 #endif
 
     if (varidp != NULL) *varidp = varp->varid;
@@ -507,6 +576,10 @@ ncmpio_inq_var(void       *ncdp,
     if (varid == NC_GLOBAL) DEBUG_RETURN_ERROR(NC_EGLOBAL)
      */
 
+    /*META: convert varid from local id to varid (index)*/
+    // printf("\n varid: %d", varid);
+    varid = ncp->vars.indexes[varid];
+
     if (varid == NC_GLOBAL) {
         /* in this case, all other pointer arguments must be NULLs */
         if (nattsp != NULL)
@@ -539,9 +612,22 @@ ncmpio_inq_var(void       *ncdp,
             memcpy(dimids, varp->dimids_org, (size_t)varp->ndims_org * SIZEOF_INT);
         else
 #endif
+    /*META: convert dimids(index) to local ids*/
+    int* dim_localids = NCI_Malloc(varp->ndims * sizeof(int));
+    for(int i=0; i<varp->ndims; i++) dim_localids[i] = ncp->dims.localids[varp->dimids[i]];
+
         if (varp->ndims > 0)
-            memcpy(dimids, varp->dimids, (size_t)varp->ndims * SIZEOF_INT);
+            memcpy(dimids, dim_localids, (size_t)varp->ndims * SIZEOF_INT);
+            // memcpy(dimids, varp->dimids, (size_t)varp->ndims * SIZEOF_INT);
+    NCI_Free(dim_localids);
     }
+    
+    // printf("\n ndims:%d", varp->ndims);
+    // for(int i=0; i<varp->ndims; i++) {
+    //     // printf("\n varp->dimids[0]:%d", varp->dimids[0]);
+    //     dimids[i] = ncp->dims.localids[varp->dimids[i]];
+    // }
+
     if (nattsp != NULL) *nattsp = varp->attrs.ndefined;
 
     if (offsetp != NULL) *offsetp = varp->begin;

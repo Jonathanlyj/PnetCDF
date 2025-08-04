@@ -120,11 +120,19 @@ ncmpio_free_NC_dimarray(NC_dimarray *ncap)
     int i;
 
     assert(ncap != NULL);
-
+    double start_time;
+    double free_dim_array_time;
+    double free_dim_hash_time;
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    start_time = MPI_Wtime();
+    int hash_size = ncap->hash_size;
+    int ndefined = ncap->ndefined;
     if (ncap->value != NULL) {
         /* when error is detected reading NC_DIMENSION tag, ncap->ndefined can
          * be > 0 and ncap->value is still NULL
          */
+        
         for (i=0; i<ncap->ndefined; i++) {
             /* when error is detected reading dimension i, ncap->value[i] can
              * still be NULL
@@ -133,11 +141,27 @@ ncmpio_free_NC_dimarray(NC_dimarray *ncap)
             NCI_Free(ncap->value[i]->name);
             NCI_Free(ncap->value[i]);
         }
+        
         NCI_Free(ncap->value);
-        ncap->value = NULL;
-    }
-    ncap->ndefined = 0;
+        
 
+
+        ncap->value = NULL;
+
+    }
+    if (ncap->localids != NULL) {
+        NCI_Free(ncap->localids);
+        ncap->localids = NULL;
+    }
+    if (ncap->indexes != NULL) {
+        NCI_Free(ncap->indexes);
+        ncap->indexes = NULL;
+    }
+    free_dim_array_time = MPI_Wtime() - start_time;
+    ncap->ndefined = 0;
+    ncap->nread = 0;
+    start_time = MPI_Wtime();
+    // printf("dimarray ncap->hash_size: %d\n", ncap->hash_size);
 #ifndef SEARCH_NAME_LINEARLY
     /* free space allocated for dim name lookup table */
     if (ncap->nameT != NULL) {
@@ -147,6 +171,10 @@ ncmpio_free_NC_dimarray(NC_dimarray *ncap)
         ncap->hash_size = 0;
     }
 #endif
+    free_dim_hash_time = MPI_Wtime() - start_time;
+    // if (rank == 0)
+    //     printf("free_dim_array_time (%d dims): %f, free_dim_hash_time(%d hash size): %f free_calls: %d\n", ndefined, free_dim_array_time,
+    //  hash_size, free_dim_hash_time, free_counter);
 }
 
 /*----< ncmpio_dup_NC_dimarray() >-------------------------------------------*/
@@ -160,6 +188,7 @@ ncmpio_dup_NC_dimarray(NC_dimarray *ncap, const NC_dimarray *ref)
 
     if (ref->ndefined == 0) {
         ncap->ndefined = 0;
+        
         ncap->value    = NULL;
         return NC_NOERR;
     }
@@ -168,28 +197,38 @@ ncmpio_dup_NC_dimarray(NC_dimarray *ncap, const NC_dimarray *ref)
     if (ref->ndefined > 0) {
         size_t alloc_size = PNETCDF_RNDUP(ref->ndefined, PNC_ARRAY_GROWBY);
         ncap->value = (NC_dim**) NCI_Calloc(alloc_size, sizeof(NC_dim*));
+        ncap->localids = (int*) NCI_Calloc(alloc_size, SIZEOF_INT);
+        ncap->indexes = (int*) NCI_Calloc(alloc_size, SIZEOF_INT);
         if (ncap->value == NULL) DEBUG_RETURN_ERROR(NC_ENOMEM)
     }
 
     /* duplicate each NC_dim objects */
     ncap->ndefined = 0;
+    ncap->nread = ref->nread;
     for (i=0; i<ref->ndefined; i++) {
         status = dup_NC_dim(ref->value[i], &ncap->value[i]);
         if (status != NC_NOERR) {
             ncmpio_free_NC_dimarray(ncap);
             return status;
         }
+        ncap->localids[i] = ref->localids[i];
+        ncap->indexes[i] = ref->indexes[i];
         ncap->ndefined++;
     }
+    
     assert(ncap->ndefined == ref->ndefined);
 
 #ifndef SEARCH_NAME_LINEARLY
     /* allocate hashing lookup table, if not allocated yet */
-    if (ncap->nameT == NULL)
-        ncap->nameT = NCI_Calloc(ncap->hash_size, sizeof(NC_nametable));
+    ncap->hash_size = ref->hash_size;
+    if (ref->nameT != NULL) {
+        if (ncap->nameT == NULL)
+            ncap->nameT = NCI_Calloc(ncap->hash_size, sizeof(NC_nametable));
 
-    /* duplicate dim name lookup table */
-    ncmpio_hash_table_copy(ncap->nameT, ref->nameT, ncap->hash_size);
+        /* duplicate dim name lookup table */
+        ncmpio_hash_table_copy(ncap->nameT, ref->nameT, ncap->hash_size);
+    }
+
 #endif
 
     return NC_NOERR;
@@ -227,6 +266,10 @@ ncmpio_def_dim(void       *ncdp,    /* IN:  NC object */
 
         ncp->dims.value = (NC_dim **) NCI_Realloc(ncp->dims.value,
                                       alloc_size * sizeof(NC_dim*));
+        ncp->dims.localids = (int*) NCI_Realloc(ncp->dims.localids,
+                                      alloc_size * SIZEOF_INT);
+        ncp->dims.indexes = (int*) NCI_Realloc(ncp->dims.indexes,
+                                      alloc_size * SIZEOF_INT);
         if (ncp->dims.value == NULL) {
             NCI_Free(nname);
             NCI_Free(dimp);
@@ -235,6 +278,9 @@ ncmpio_def_dim(void       *ncdp,    /* IN:  NC object */
     }
 
     dimid = ncp->dims.ndefined;
+    ncp->dims.localids[dimid] = dimid;
+    ncp->dims.indexes[dimid] = dimid;
+
 
     /* Add a new dim handle to the end of handle array */
     ncp->dims.value[dimid] = dimp;
@@ -245,11 +291,11 @@ ncmpio_def_dim(void       *ncdp,    /* IN:  NC object */
 
 #ifndef SEARCH_NAME_LINEARLY
     /* allocate hashing lookup table, if not allocated yet */
-    if (ncp->dims.nameT == NULL)
-        ncp->dims.nameT = NCI_Calloc(ncp->dims.hash_size, sizeof(NC_nametable));
+    // if (ncp->dims.nameT == NULL)
+    //     ncp->dims.nameT = NCI_Calloc(ncp->dims.hash_size, sizeof(NC_nametable));
 
-    /* insert nname to the lookup table */
-    ncmpio_hash_insert(ncp->dims.nameT, ncp->dims.hash_size, nname, dimid);
+    // /* insert nname to the lookup table */
+    // ncmpio_hash_insert(ncp->dims.nameT, ncp->dims.hash_size, nname, dimid);
 #endif
 
     if (dimidp != NULL) *dimidp = dimid;
@@ -286,6 +332,9 @@ ncmpio_inq_dim(void       *ncdp,
 {
     NC_dim *dimp;
     NC *ncp=(NC*)ncdp;
+
+    /*META: pass it to local_id to dimid(index) mapping first*/
+    dimid = ncp->dims.indexes[dimid];
 
     /* sanity check for dimid has been done at dispatchers */
     dimp = ncp->dims.value[dimid];
@@ -324,8 +373,11 @@ ncmpio_rename_dim(void       *ncdp,
     if (err != NC_NOERR) goto err_check;
 
     nnewname_len = strlen(nnewname);
-
     /* sanity check for dimid has been done at dispatchers */
+
+    /*META: pass it to local_id to dimid(index) mapping first*/
+    dimid = ncp->dims.indexes[dimid];
+
     dimp = ncp->dims.value[dimid];
 
     if (! NC_indef(ncp) && dimp->name_len < nnewname_len) {

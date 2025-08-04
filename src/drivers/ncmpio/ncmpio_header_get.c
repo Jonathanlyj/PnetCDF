@@ -761,6 +761,11 @@ hdr_get_NC_dimarray(bufferinfo *gbp, NC_dimarray *ncap)
 
     alloc_size = PNETCDF_RNDUP(ncap->ndefined, PNC_ARRAY_GROWBY);
     ncap->value = (NC_dim**) NCI_Calloc(alloc_size, sizeof(NC_dim*));
+    /*META: Additional members need to be initialized*/
+    ncap->nread = ncap->ndefined;
+    ncap->localids = (int *) NCI_Calloc(alloc_size, SIZEOF_INT);
+    ncap->indexes = (int *) NCI_Calloc(alloc_size, SIZEOF_INT);
+
     if (ncap->value == NULL) DEBUG_RETURN_ERROR(NC_ENOMEM)
 
     for (i=0; i<ndefined; i++) {
@@ -772,6 +777,8 @@ hdr_get_NC_dimarray(bufferinfo *gbp, NC_dimarray *ncap)
         }
         if (ncap->value[i]->size == NC_UNLIMITED)
             ncap->unlimited_id = i; /* ID of unlimited dimension */
+        ncap->localids[i] = i;
+        ncap->indexes[i] = i;
     }
 
     return status;
@@ -1253,6 +1260,11 @@ hdr_get_NC_vararray(bufferinfo  *gbp,
     alloc_size = PNETCDF_RNDUP(ncap->ndefined, PNC_ARRAY_GROWBY);
     ncap->value = (NC_var**) NCI_Calloc(alloc_size, sizeof(NC_var*));
     if (ncap->value == NULL) DEBUG_RETURN_ERROR(NC_ENOMEM)
+    /*META: Addtional members need to be initialized*/
+    ncap->nread = ncap->ndefined;
+    ncap->localids = (int *) NCI_Calloc(alloc_size, SIZEOF_INT);
+    ncap->indexes = (int *) NCI_Calloc(alloc_size, SIZEOF_INT);
+
 
     /* get [var ...] */
     for (i=0; i<ndefined; i++) {
@@ -1263,6 +1275,8 @@ hdr_get_NC_vararray(bufferinfo  *gbp,
             return err;
         }
         ncap->value[i]->varid = i;
+        ncap->localids[i] = i;
+        ncap->indexes[i] = i;
     }
 
     return status;

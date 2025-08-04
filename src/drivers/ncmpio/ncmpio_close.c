@@ -32,15 +32,34 @@
 #include "ncmpio_subfile.h"
 #endif
 
+int free_counter = 0;
+int cls_counter = 0;
+
 /*----< ncmpio_free_NC() >----------------------------------------------------*/
 void
 ncmpio_free_NC(NC *ncp)
 {
-    if (ncp == NULL) return;
+    int rank;
+    MPI_Comm_rank(ncp->comm, &rank);
+    double start_time = MPI_Wtime();
 
+    if (ncp == NULL) return;
+    
     ncmpio_free_NC_dimarray(&ncp->dims);
+    // if (rank == 0)
+    //     printf("ncmpio_free_NC free() count after ncmpio_free_NC_dimarray: %d\n", free_counter);
+    double dim_free_time = MPI_Wtime() - start_time;
     ncmpio_free_NC_attrarray(&ncp->attrs);
+    // if (rank == 0)
+    //     printf("ncmpio_free_NC free() count after ncmpio_free_NC_attarray: %d\n", free_counter);
+    start_time = MPI_Wtime();
     ncmpio_free_NC_vararray(&ncp->vars);
+    
+    
+    // if (rank == 0)
+    //     printf("ncmpio_free_NC free() count after ncmpio_free_NC_vararray: %d\n", free_counter);
+    double var_free_time = MPI_Wtime() - start_time;
+    double other_start = MPI_Wtime();
 
     /* The only case that ncp->mpiinfo is MPI_INFO_NULL is when exiting endef
      * from a redef. All other cases reaching here are from ncmpi_close, in
@@ -54,7 +73,11 @@ ncmpio_free_NC(NC *ncp)
     if (ncp->path          != NULL) NCI_Free(ncp->path);
     if (ncp->nonaggr_ranks != NULL) NCI_Free(ncp->nonaggr_ranks);
 
+    double other_free_time = MPI_Wtime() - other_start;
+
     NCI_Free(ncp);
+    // if (rank == 0)
+    //     printf("dim_free_time: %f, var_free_time: %f, other_free_time: %f\n", dim_free_time, var_free_time, other_free_time);
 }
 
 /*----< ncmpio_close_files() >-----------------------------------------------*/
@@ -97,7 +120,7 @@ ncmpio_close(void *ncdp)
 {
     int err=NC_NOERR, status=NC_NOERR;
     NC *ncp = (NC*)ncdp;
-
+    double close_start = MPI_Wtime();
     if (NC_indef(ncp)) { /* currently in define mode */
         status = ncmpio__enddef(ncp, 0, 0, 0, 0); /* TODO: defaults */
 
@@ -224,8 +247,23 @@ ncmpio_close(void *ncdp)
     }
 
     /* free up space occupied by the header metadata */
+    MPI_Barrier(ncp->comm); //add barrier to make sure all processes starts from the same place
+    double free_time_start = MPI_Wtime();
+    free_counter = 0;
+    cls_counter = 0;
+    int rank;
+    MPI_Comm_rank(ncp->comm, &rank);
     ncmpio_free_NC(ncp);
+    double free_time = MPI_Wtime() - free_time_start;
 
+    // if (rank == 0){
+    //     printf("ncmpio_free_NC time: %f\n", free_time);
+    //     printf("before ncmpio_free_NC time: %f\n", free_time_start - close_start);
+    //     // printf("ncmpio_free_NC free() count: %d\n", free_counter);
+    // }
+    // if (rank == 0){
+    //     printf("cls_counter: %d\n", cls_counter);   
+    // }
     return status;
 }
 

@@ -17,6 +17,8 @@
 #include <unistd.h>     /* read(), close(), lseek() */
 #include <assert.h>     /* assert() */
 #include <errno.h>      /* errno */
+#include "baseline_ncx.h" 
+#include "../drivers/ncmpio/ncmpio_NC.h"
 
 #ifdef ENABLE_THREAD_SAFE
 #include<pthread.h>
@@ -68,6 +70,611 @@ static int ncmpi_default_create_format = NC_FORMAT_CLASSIC;
         goto err_out;                                              \
     }                                                              \
 }
+
+
+
+
+
+/*----< pnetcdf_check_crt_mem() >---------------------------------------------------*/
+/* check PnetCDF library internal memory usage */
+static int
+pnetcdf_check_crt_mem(MPI_Comm comm, int checkpoint)
+{
+    int err, nerrs=0, rank;
+    MPI_Offset malloc_size, sum_size;
+
+    MPI_Comm_rank(comm, &rank);
+
+    /* print info about PnetCDF internal malloc usage */
+    err = ncmpi_inq_malloc_size(&malloc_size);
+    if (err == NC_NOERR) {
+        // MPI_Reduce(&malloc_size, &sum_size, 1, MPI_OFFSET, MPI_SUM, 0, MPI_COMM_WORLD);
+        if (rank == 1){
+            // printf("checkpoint 0-%d: total current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
+            //        checkpoint, (float)sum_size /1048576);
+            printf("checkpoint 0-%d: rank 1 current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
+                   checkpoint, malloc_size, (float)malloc_size /1048576);
+        }
+        // }else if (rank == 1){
+        //     printf("checkpoint 0-%d: rank 1 current heap memory allocated by PnetCDF internally is %lld bytes (%.2f MB)\n",
+        //            checkpoint, malloc_size, (float)malloc_size /1048576);
+        // }
+    }
+    else if (err != NC_ENOTENABLED) {
+        printf("Error at %s:%d: %s\n", __FILE__,__LINE__,ncmpi_strerror(err));
+        nerrs++;
+    }
+    return nerrs;
+}
+/*META: Extract metadata and save it to new header struc*/
+
+static int baseline_extract_meta(void *ncdp, struct hdr *file_info) {
+
+    int ncid, num_vars, num_dims, tot_num_dims, elem_sz, v_attrV_xsz;
+    int err = NC_NOERR;
+    MPI_Offset start, count;
+    NC *ncp = (NC*)ncdp;
+    
+    file_info->vars.ndefined = ncp->vars.ndefined;
+    file_info->xsz = 0;
+    // Dimensions
+    file_info->dims.ndefined = ncp->dims.ndefined;
+    file_info->dims.value = (hdr_dim **)NCI_Malloc(file_info->dims.ndefined * sizeof(hdr_dim *));
+    file_info->xsz += 2 * sizeof(uint32_t); // NC_Dimension and nelems
+
+    for (int i = 0; i < file_info->dims.ndefined; i++) {
+        hdr_dim *dim_info = (hdr_dim *)NCI_Malloc(sizeof(hdr_dim));
+        dim_info->size = ncp->dims.value[i]->size;
+        dim_info->name_len =  ncp->dims.value[i]->name_len;
+        dim_info->name = (char *)NCI_Malloc(dim_info->name_len + 1);
+        // dim_info->shared = false;
+        // dim_info->global_idx = 0;
+        strcpy(dim_info->name, ncp->dims.value[i]->name);
+        file_info->dims.value[i] = dim_info;
+        file_info->xsz += sizeof(uint32_t) + sizeof(char) * dim_info->name_len; // dim name
+        file_info->xsz += sizeof(uint32_t); //size
+    }
+    // ncmpio_free_NC_dimarray(&ncp->dims);
+    //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 101);
+
+    // Variables
+    file_info->vars.ndefined = ncp->vars.ndefined; 
+    file_info->vars.value = (hdr_var **)NCI_Malloc(file_info->vars.ndefined * sizeof(hdr_var *));
+    file_info->xsz += 2 * sizeof(uint32_t); // NC_Variable and ndefined
+    for (int i = 0; i < file_info->vars.ndefined; i++) {
+       hdr_var *var_info = (hdr_var *)NCI_Malloc(sizeof(hdr_var));
+       var_info->xtype = ncp->vars.value[i]->xtype;
+       var_info->name_len = ncp->vars.value[i]->name_len;
+       var_info->name = (char *)NCI_Malloc(var_info->name_len + 1);
+       strcpy(var_info->name, ncp->vars.value[i]->name);
+       var_info->ndims = ncp->vars.value[i]->ndims;
+       var_info->dimids = (int *)NCI_Malloc((var_info->ndims) * sizeof(int));
+        for (int j = 0; j <var_info->ndims; j++) {
+           var_info->dimids[j] = ncp->vars.value[i]->dimids[j];
+        }
+        // file_info->vars.value[i] = var_info;
+        file_info->xsz += sizeof(uint32_t) + sizeof(char) *var_info->name_len; //var name
+        file_info->xsz += sizeof(uint32_t); //xtype
+        file_info->xsz += sizeof(uint32_t); //nelems of dim list
+        file_info->xsz += sizeof(uint32_t) *var_info->ndims; // dimid list
+
+        //Variable Attributes
+        var_info->attrs.ndefined = ncp->vars.value[i]->attrs.ndefined;
+        file_info->xsz += 2 * sizeof(uint32_t); // NC_Attribute and ndefine
+        if (var_info->attrs.ndefined == 0) {
+            var_info->attrs.value = NULL;
+        } else{
+            var_info->attrs.value = (hdr_attr **)NCI_Malloc(var_info->attrs.ndefined * sizeof(hdr_attr *));
+            for (int k = 0; k < ncp->vars.value[i]->attrs.ndefined; k++) {
+        
+                        hdr_attr *attr_info = (hdr_attr *)NCI_Malloc(sizeof(hdr_attr));
+                        attr_info->nelems = ncp->vars.value[i]->attrs.value[k]->nelems;
+                        attr_info->xtype = ncp->vars.value[i]->attrs.value[k] ->xtype; // Using NC_INT for simplicity
+                        attr_info->name_len = ncp->vars.value[i]->attrs.value[k]->name_len;
+                        attr_info->name = (char *)NCI_Malloc(attr_info->name_len + 1);
+                        strcpy(attr_info->name, ncp->vars.value[i]->attrs.value[k]->name);
+                        // ncmpii_xlen_nc_type(attr_info->xtype, &v_attrV_xsz);
+                        // int nbytes = attr_info->nelems * v_attrV_xsz;
+                        // memcpy(attr_info->xvalue, ncp->vars.value[i]->attrs.value[k]->xvalue, nbytes);
+                        attr_info->xvalue = ncp->vars.value[i]->attrs.value[k]->xvalue;
+                        file_info->xsz += sizeof(uint32_t) + sizeof(char) * attr_info->name_len; //attr name
+                        file_info->xsz += sizeof(uint32_t); // nc_type
+                        file_info->xsz += sizeof(uint32_t); // nelems
+                        err = xlen_nc_type(attr_info->xtype, &v_attrV_xsz);
+                        file_info->xsz += attr_info->nelems * v_attrV_xsz;
+            
+                        var_info->attrs.value[k] = attr_info;
+                }
+        }
+        file_info->vars.value[i] = var_info;
+
+    }
+    //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 102);
+    // ncmpio_free_NC_vararray(&ncp->vars);
+
+    return err;
+}
+
+/*META: Add metadata to header object*/
+static int add_dim(NC* ncp, int *dimidp, char* name, MPI_Offset size){
+    int dimid, err;
+    char *nname=NULL;  /* normalized name */
+    NC_dim *dimp=NULL;
+    /* create a normalized character string */
+    err = ncmpii_utf8_normalize(name, &nname);
+    if (err != NC_NOERR) return err;
+
+    /* create a new dimension object (dimp->name points to nname) */
+    dimp = (NC_dim*) NCI_Malloc(sizeof(NC_dim));
+    if (dimp == NULL) {
+        NCI_Free(nname);
+        DEBUG_RETURN_ERROR(NC_ENOMEM)
+    }
+
+    dimp->size     = size;
+    dimp->name     = nname;
+    dimp->name_len = strlen(nname);
+  
+    dimid = ncp->dims.ndefined;
+    (*dimidp) = dimid;
+    /* Add a new dim handle to the end of handle array */
+    ncp->dims.value[dimid] = dimp;
+    //TODO: check unlimited id conflicts
+    if (dimp->size == NC_UNLIMITED) ncp->dims.unlimited_id = dimid;
+    ncp->dims.ndefined++;
+
+    #ifndef SEARCH_NAME_LINEARLY
+    // ncmpio_hash_insert(ncp->dims.nameT, nname, dimid);
+    // printf("\n test free here");
+    // ncmpio_hash_table_free(ncp->dims.nameT);
+
+    if(ncp->dims.ndefined==1){
+        ncmpio_hash_table_populate_NC_dim(&ncp->dims, ncp->dims.hash_size);
+        
+    }else{
+        // ncmpio_hash_table_populate_NC_dim(&ncp->dims);
+        ncmpio_hash_insert(ncp->dims.nameT, ncp->dims.hash_size, nname, dimid);
+    }
+        
+    #endif
+
+    return NC_NOERR;
+
+}
+
+/*META: Add metadata to header object*/
+static int add_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp, const NC_dimarray* old_dimarray, const NC_vararray* old_vararray){
+    // NC_dimarray* ncdims, NC_vararray* ncvars
+    NC *ncp=(NC*)pncp->ncp;
+    //add dimensions 
+    int ndims= hdr_data->dims.ndefined;
+    int cum_ndims = ncp->dims.ndefined;
+
+    int i,j,k,nerrs=0;
+    MPI_Offset len;
+    int  dimid,err;
+    int *new_indexes = (int*)NCI_Malloc(sizeof(int) * ndims);//mapping from old index to new index
+    // check if total number of dimensions exceed max number allowed
+    int tmp = cum_ndims + ndims;
+    
+    if(hdr_idx>0) tmp = cum_ndims + (ndims - old_dimarray->nread);
+    if (tmp > NC_MAX_DIMS) DEBUG_RETURN_ERROR(NC_EMAXDIMS)
+    //expand dimarray size
+    size_t extra_chunk =  PNETCDF_RNDUP(tmp, PNC_ARRAY_GROWBY) - PNETCDF_RNDUP(cum_ndims, PNC_ARRAY_GROWBY);
+    // printf("\ntmp is %d, cum_ndims is %d, ndims is %d", tmp, cum_ndims, ndims); 
+
+    if (extra_chunk > 0){
+        size_t alloc_size = (size_t)PNETCDF_RNDUP(tmp, PNC_ARRAY_GROWBY);
+        ncp->dims.value = (NC_dim **) NCI_Realloc(ncp->dims.value,
+                                      alloc_size * sizeof(NC_dim*));
+        ncp->dims.localids = (int *) NCI_Realloc(ncp->dims.localids,
+                                      alloc_size * SIZEOF_INT);
+        ncp->dims.indexes = (int *) NCI_Realloc(ncp->dims.indexes,
+                                    alloc_size * SIZEOF_INT);
+        if (ncp->dims.value == NULL || ncp->dims.localids == NULL || ncp->dims.indexes == NULL)
+            DEBUG_RETURN_ERROR(NC_ENOMEM)
+    }
+
+    //new local id generator
+    int dimid_generator,varid_generator;
+    dimid_generator =  ncp->dims.ndefined;
+    varid_generator =  ncp->vars.ndefined;
+
+    //store dims
+        /*Reorganize this:
+            if (hdr_idx == 0) and (i < nread): //intial definition for dim read from file
+                define as new dimension;
+                maintain old local ids from old dimarray;
+                update local-global index mapping (for variable)
+            elif(hdr_idx > 0) and (i < nread):
+                already defined; skip define;
+                maintain old local ids from old dimarray;
+                update local-global index mapping (for variable)
+            else
+                check if name match:
+                if name match:
+                    retrieve dimid
+                    check if info match
+                    if info match: //existed dim no need to define
+                        pdate local-global index mapping (for variable)
+                        if rank == hdr_idx:
+                            maintain old local ids:
+                            localids[dimid] = old_dimarray.localids[i]
+                            correct localids previously occupied
+                            localids[old_dimarray.localids[i]] = dimid_generator++;
+                        //other processes no need to change localuds at all
+                    else: //info not match
+                        error out
+                        
+                else: //no duplicated name
+                    define as a new dimension;
+                    update local-global index mapping (for variable)
+                    if rank==hdr_idx:
+                        maintain old local ids:
+                        localids[dimid] = old_dimarray.localids[i]
+                        correct localids previously occupied
+                        localids[old_dimarray.localids[i]] = dimid_generator++;
+                    else:
+                        add local ids using id from id generater
+                        
+        */
+
+     for (i=0; i<ndims; i++){
+        // int shared_dim = 0;
+        // printf("\n rank %d, i %d, hdr_idx %d", rank, i , hdr_idx);
+       if(i < old_dimarray->nread){
+            //intial definition for dim read from file
+            if (hdr_idx == 0){
+                err = add_dim(ncp, &dimid, hdr_data->dims.value[i]->name,hdr_data->dims.value[i]->size);
+                if (err != NC_NOERR) return err;
+                //update pnc header
+                pncp->ndims++;
+                if (hdr_data->dims.value[i]->size == NC_UNLIMITED && pncp->unlimdimid == -1) pncp->unlimdimid = dimid;
+            }
+            //maintain the old index to localid mapping       
+            ncp->dims.localids[i] = old_dimarray->localids[i];
+            //increment of localid generator
+            dimid_generator++;
+            //update local-global index mapping (for variable)
+            new_indexes[i] = i;
+        }else{ //newly defined dims
+            
+            err = pncp->driver->inq_dimid(ncp, hdr_data->dims.value[i]->name, &dimid);
+            if (err != NC_EBADDIM) {
+                //name matched, check property
+                if (dimid < old_dimarray->nread){
+                    //name conflict with a dim read from file, error out
+                    DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_DIM_NAME)
+                    goto err_check;
+                }
+                len = ncp->dims.value[dimid]->size;
+                if (len!= hdr_data->dims.value[i]->size){
+                    //duplicated name but different value error out
+                    DEBUG_ASSIGN_ERROR(err, NC_EMULTIDEFINE_DIM_NAME)
+                    goto err_check;
+                }else{
+                    //a shread dimension, skip define since its read from file and already defined
+                   
+                    if (rank == hdr_idx){
+                        //maintain old local id for this dim
+                        // printf("\n old_dimarray->localids[i] %d", old_dimarray->localids[i]);
+                        int prev_localid = ncp->dims.localids[dimid];
+                        ncp->dims.localids[dimid] = old_dimarray->localids[i];
+                        //correct the local id that was previously assigned to a dim
+                        ncp->dims.localids[old_dimarray->localids[i]] = prev_localid;
+                        //update local-global index mapping (for variable)
+                        
+                        // printf("\n ncp->dims.localids[dimid] %d", ncp->dims.localids[dimid]);
+                        // printf("\n ncp->dims.localids[old_dimarray->localids[i]] %d", ncp->dims.localids[old_dimarray->localids[i]]);
+                    }
+                    new_indexes[i] = dimid;
+                    //other processes has no need to change localids at all
+                }
+            }else{
+                //new dimension, no duplicated name
+
+                err = add_dim(ncp, &dimid, hdr_data->dims.value[i]->name,hdr_data->dims.value[i]->size);
+                if (err != NC_NOERR) goto err_check;
+                pncp->ndims++;
+                
+                if (hdr_data->dims.value[i]->size == NC_UNLIMITED && pncp->unlimdimid == -1) pncp->unlimdimid = dimid;
+                new_indexes[i] = dimid;
+                
+                if (rank == hdr_idx){
+                        //maintain old local id for this dim
+                        ncp->dims.localids[dimid] = old_dimarray->localids[i];
+                        //correct the local id that was previously assigned to a dim
+                        ncp->dims.localids[old_dimarray->localids[i]] = dimid_generator++;
+                    }else{// add local ids using id from id generater
+                        ncp->dims.localids[dimid] = dimid_generator++;
+                    }
+            }
+        }
+    }     
+
+    //add variables
+
+    int nvars = hdr_data->vars.ndefined;
+    int cum_nvars = ncp->vars.ndefined;
+    // int *varid = (int *)malloc(nvars * sizeof(int));
+    int v_ndims, v_namelen, xtype, n_att, varid;
+    int *v_dimids;
+    tmp = nvars + cum_nvars;
+    if(hdr_idx>0) tmp = cum_ndims + (ndims - old_vararray->nread);
+    //Expand NC object vararray
+    extra_chunk =  PNETCDF_RNDUP(tmp, PNC_ARRAY_GROWBY) - PNETCDF_RNDUP(cum_nvars, PNC_ARRAY_GROWBY);
+
+    if (extra_chunk > 0){
+        size_t alloc_size = (size_t) PNETCDF_RNDUP(tmp, PNC_ARRAY_GROWBY);
+        
+        ncp->vars.value = (NC_var **) NCI_Realloc(ncp->vars.value, alloc_size * sizeof(NC_var*));
+        ncp->vars.localids = (int *) NCI_Realloc(ncp->vars.localids,
+                                      alloc_size * SIZEOF_INT);
+        ncp->vars.indexes = (int *) NCI_Realloc(ncp->vars.indexes,
+                                    alloc_size * SIZEOF_INT);
+
+        if (ncp->vars.value == NULL || ncp->vars.localids == NULL || ncp->vars.indexes == NULL)
+            DEBUG_RETURN_ERROR(NC_ENOMEM)
+    }
+
+    //Expand PNC object vararray
+
+    extra_chunk =  PNETCDF_RNDUP(tmp, PNC_VARS_CHUNK) - PNETCDF_RNDUP(cum_nvars, PNC_VARS_CHUNK);
+    if (extra_chunk > 0){
+        size_t alloc_size = (size_t) PNETCDF_RNDUP(tmp, PNC_VARS_CHUNK);
+
+        pncp->vars = NCI_Realloc(pncp->vars,
+                                 alloc_size *sizeof(PNC_var));
+    }
+
+    // printf("\nnvars: %d", nvars);
+    //store vars
+        /*Reorganize this:
+            if hdr_idx == 0:
+                define as new variable
+                if i < nread:
+                    maintain the old index to localid mapping
+                else:
+                    new variable, create new id mapping
+            else:
+                if i < nread:
+                    skip because already defined
+                else:
+                    if name matching, error out
+                    if not, define as new variable create new mapping for localid;
+        */
+
+    for (i=0; i<nvars; i++){
+        if(hdr_idx > 0){
+            if (i < old_vararray->nread){
+                continue;
+            }else{
+                //check if name already used
+                err = pncp->driver->inq_varid(pncp->ncp, hdr_data->vars.value[i]->name, &varid);
+
+                if (err != NC_ENOTVAR){
+                    //same name
+                    if(varid < old_vararray->nread){
+                        //name conflict with a var read from file, error out
+                        DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
+                        goto err_check;
+                    }
+                    //check type and ndims
+
+                    nc_type old_xtype = ncp->vars.value[varid]->xtype;
+                    int old_ndims = ncp->vars.value[varid]->ndims;
+
+                    if (hdr_data->vars.value[i]->xtype == old_xtype && hdr_data->vars.value[i]->ndims == old_ndims){
+                        //check ndimid
+                        for(int k=0; k< old_ndims;k++){
+                            if (ncp->vars.value[varid]->dimids[k] != hdr_data->vars.value[i]->dimids[k]){
+                                // dimid not match
+                                DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
+                                goto err_check;
+                            }
+                        }
+                        //TODO: also check variable attributes
+                        //shared variable skip define since it is already defined
+                        if (rank == hdr_idx){
+                            /*Simple case rank 0: v1, v2; rank 1: v2, v3
+                            when iterate to rank1, v2, rank0 needs to do nothing
+                            for rank1, rank1 already gave v2 a local id of 1, but now it realize it should give 0 so localids[v2]-> 0
+                            but rank1 already gave v1 a local id of 0, so needs to correct localid of v1, localids[v1] -> pre_localids_of_v2
+                            */
+                            //maintain old local id for this var
+                            // printf("\n old_vararray->localids[i] %d", old_vararray->localids[i]);
+                            int prev_localid = ncp->vars.localids[varid];
+                            ncp->vars.localids[varid] = old_vararray->localids[i];
+                            //correct the local id that was previously assigned to a var
+                            ncp->vars.localids[old_vararray->localids[i]] = prev_localid;
+                            //update local-global index mapping (for variable)
+                        }
+                        //skip define
+                        continue;
+
+                    }else{
+                        // nvars or type not match
+                        DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
+                        goto err_check;
+                    }
+
+                } 
+            }
+        }
+        //All other cases: create the new variable
+
+        v_namelen = hdr_data->vars.value[i]->name_len;
+        xtype = hdr_data->vars.value[i]->xtype;
+        v_ndims = hdr_data->vars.value[i]->ndims;
+
+        char *nname=NULL;  /* normalized name */
+        NC_var *varp=NULL;
+
+        v_dimids = (int *)NCI_Malloc(v_ndims * sizeof(int));
+
+        for(j=0; j<v_ndims; j++) v_dimids[j] = new_indexes[hdr_data->vars.value[i]->dimids[j]];
+
+        /* create a normalized character string */
+        err = ncmpii_utf8_normalize(hdr_data->vars.value[i]->name, &nname);
+        if (err != NC_NOERR) goto err_check;
+        //Add var to NC header object
+
+        /* allocate a new NC_var object */
+        varp = ncmpio_new_NC_var(nname, strlen(nname), v_ndims);
+
+   
+        varp->xtype = xtype;
+        ncmpii_xlen_nc_type(xtype, &varp->xsz);
+        /* copy dimids[] */
+        if (v_ndims != 0 && v_dimids != NULL)
+            memcpy(varp->dimids, v_dimids, (size_t)v_ndims * SIZEOF_INT);
+        /* set up array dimensional structures */
+        err = ncmpio_NC_var_shape64(varp, &ncp->dims);
+        if (err != NC_NOERR) {
+            ncmpio_free_NC_var(varp);
+            nname = NULL; /* already freed in ncmpio_free_NC_var() */
+            goto err_check;
+        }
+        /* Add a new dim handle to the end of handle array */
+
+        varp->varid = ncp->vars.ndefined;
+        ncp->vars.value[ncp->vars.ndefined] = varp;
+        ncp->vars.ndefined++;
+#ifndef SEARCH_NAME_LINEARLY
+    /* insert nname to the lookup table */
+        if(ncp->vars.ndefined==1){
+            ncmpio_hash_table_populate_NC_var(&ncp->vars, ncp->vars.hash_size);
+        }else{
+            ncmpio_hash_insert(ncp->vars.nameT, ncp->vars.hash_size, nname, varp->varid);
+            // ncmpio_hash_table_populate_NC_var(&ncp->vars);
+        }
+        
+
+        
+#endif
+        //Update PNC object
+        // printf("\n started add PNC new varaible object");
+        /* default is NOFILL */
+        varp->no_fill = 1;
+
+        /* change to FILL only if the entire dataset fill mode is FILL */
+        if (NC_dofill(ncp)) varp->no_fill = 0;
+
+        //Add var to PNC object
+        pncp->vars[varp->varid].ndims  = v_ndims;
+        pncp->vars[varp->varid].xtype  = xtype;
+        pncp->vars[varp->varid].recdim = -1;   /* if fixed-size variable */
+        pncp->vars[varp->varid].shape  = NULL;
+        
+        // printf("\n start add PNC new varaible object dimid");
+            if (v_ndims > 0) {
+                if (v_dimids[0] == pncp->unlimdimid) { /* record variable */
+                    pncp->vars[varp->varid].recdim = pncp->unlimdimid;
+                    pncp->nrec_vars++;
+                }
+                // printf("\n v_ndim: %d", v_ndims);
+                pncp->vars[varp->varid].shape = (MPI_Offset*)
+                                            NCI_Malloc(v_ndims * SIZEOF_MPI_OFFSET);
+
+                for (int dim_i=0; dim_i<v_ndims; dim_i++) {
+                    /* obtain size of dimension i */
+                    // META: cannot use the old appraoch here because ncmpio_inq_dim now convert localid to global id first
+                    int original_dimid = hdr_data->vars.value[i]->dimids[dim_i];
+                    // printf("\n  hdr_data->dims.value[original_dimid]->size; %lld",hdr_data->dims.value[original_dimid]->size);
+                    pncp->vars[varp->varid].shape[dim_i] = hdr_data->dims.value[original_dimid]->size;
+                    // err = pncp->driver->inq_dim(pncp->ncp, v_dimids[dim_i], NULL,
+                    //                             pncp->vars[varp->varid].shape+dim_i);
+                    if (err != NC_NOERR) return err;
+                }
+            }
+            pncp->nvars++;
+
+        // Add variable attributes
+        // printf("\n finished add PNC new varaible object");
+        
+        int att_namelen, att_xtype, att_nelems,v_attr_xsz, nbytes;
+        int nattrs = hdr_data->vars.value[i]->attrs.ndefined;
+        int att_vid = varp->varid;
+        // printf("\nvariable %d: nattrs: %d", i, nattrs);
+        // int *varid = (int *)malloc(nattrs * sizeof(int));
+        ncp->vars.value[att_vid]->attrs.ndefined = nattrs;
+        size_t alloc_size = PNETCDF_RNDUP(nattrs, PNC_VATTR_ARRAY_GROWBY);
+        alloc_size = 0;
+        if (nattrs > 0){
+            ncp->vars.value[att_vid]->attrs.value = (NC_attr**) NCI_Calloc(alloc_size, sizeof(NC_attr*));
+            if (ncp->vars.value[att_vid]->attrs.value == NULL) DEBUG_RETURN_ERROR(NC_ENOMEM)
+        }
+        else
+            ncp->vars.value[att_vid]->attrs.value = NULL;
+        
+        for(k=0; k<nattrs; k++){
+            NC_attr *attrp=NULL;
+            att_namelen = hdr_data->vars.value[i]->attrs.value[k]->name_len;
+            att_xtype = hdr_data->vars.value[i]->attrs.value[k]->xtype;
+            att_nelems = hdr_data->vars.value[i]->attrs.value[k]->nelems;
+            
+            /* create a normalized character string */
+            err = ncmpii_utf8_normalize(hdr_data->vars.value[i]->attrs.value[k]->name, &nname);
+            if (err != NC_NOERR) goto err_check;
+            err = ncmpio_new_NC_attr(nname, att_namelen, att_xtype, att_nelems, &attrp);
+
+            if (err != NC_NOERR) {
+                NCI_Free(nname);
+                return err;
+            }
+            ncmpii_xlen_nc_type(att_xtype, &v_attr_xsz);
+            nbytes = attrp->nelems * v_attr_xsz;
+            memcpy(attrp->xvalue, hdr_data->vars.value[i]->attrs.value[k]->xvalue, nbytes);
+            ncp->vars.value[att_vid]->attrs.value[k] = attrp;
+        }
+
+        NCI_Free(v_dimids);
+        //Map localids for all cases
+        if (hdr_idx == 0 && i < old_vararray->nread){
+            // variable read from file, all processes maintain their original
+            ncp->vars.localids[i] = old_vararray->localids[i];
+            //increment of local id generator
+            varid_generator++;
+        }else if(rank == hdr_idx){
+            // the "host" process need to maintain the origianl mapping
+            
+            ncp->vars.localids[varp->varid] = old_vararray->localids[i];
+             //correct the local id that was previously assigned to a previous var
+            // printf("rank %d: %d, %d, %d", rank, i, old_vararray->localids[i], varid_generator);
+            ncp->vars.localids[old_vararray->localids[i]] = varid_generator++;
+            
+        }else{
+            // a new var not seen by previous old vararray
+            ncp->vars.localids[varp->varid] = varid_generator++;
+            // printf("\nrank %d: %d, %d", rank,varp->varid, varid_generator);
+        }
+
+
+       
+    }
+
+    NCI_Free(new_indexes);
+
+err_check:
+    if (err != NC_NOERR) return err;
+    return nerrs;
+}
+
+
+// /*META: Add dim metadata to header object*/
+// static int add_dim_hdr(struct hdr *hdr_data, int hdr_idx, int rank, PNC* pncp){
+//     NC *ncp=(NC*)pncp->ncp;
+//     //add dimensions 
+//     int ndims= hdr_data->dims.ndefined;
+//     int cum_ndims = ncp->dims.ndefined;
+
+//     int i,j,k,nerrs=0;
+//     MPI_Offset len;
+//     int  dimid,err;
+//     int *new_indexes = (int*)NCI_Malloc(sizeof(int) * ndims);//mapping from old index to new index
+
+// }
+
 
 /*----< new_id_PNCList() >---------------------------------------------------*/
 /* Return a new ID (array index) from the PNC list, pnc_filelist[] that is
@@ -158,6 +765,8 @@ err_out:
 #endif
     return (err != NC_NOERR) ? err : perr;
 }
+
+
 
 /*----< construct_info() >---------------------------------------------------*/
 static void
@@ -880,11 +1489,104 @@ fn_exit:
     return status;
 }
 
+/*----< shallow_dup_NC_dimarray() >-------------------------------------------*/
+int
+shallow_dup_NC_dimarray(NC_dimarray *ncap, const NC_dimarray *ref)
+{
+    int i, status=NC_NOERR;
+
+    assert(ref != NULL);
+    assert(ncap != NULL);
+
+    ncap->value = NULL;
+    /* allocate array of NC_dim objects */
+    if (ref->ndefined > 0) {
+        size_t alloc_size = PNETCDF_RNDUP(ref->ndefined, PNC_ARRAY_GROWBY);
+        ncap->localids = (int*) NCI_Calloc(alloc_size, SIZEOF_INT);
+        // ncap->indexes = (int*) NCI_Calloc(alloc_size, SIZEOF_INT);
+        ncap->indexes = NULL;
+
+    }
+
+    /* duplicate each NC_dim objects */
+    ncap->ndefined = 0;
+    ncap->nread = ref->nread;
+    for (i=0; i<ref->ndefined; i++) {
+        ncap->localids[i] = ref->localids[i];
+        // ncap->indexes[i] = ref->indexes[i];
+        ncap->ndefined++;
+    }
+    
+    assert(ncap->ndefined == ref->ndefined);
+#ifndef SEARCH_NAME_LINEARLY
+    /* allocate hashing lookup table, if not allocated yet */
+    ncap->hash_size = ref->hash_size;
+    ncap->nameT == NULL;
+#endif
+    return NC_NOERR;
+}
+
+
+/*----< shallow_dup_NC_vararray() >-------------------------------------------*/
+int
+shallow_dup_NC_vararray(NC_vararray       *ncap,
+                       const NC_vararray *ref,
+                       int                attr_hsize)
+{
+    int i, status=NC_NOERR;
+    size_t alloc_size;
+
+    assert(ref != NULL);
+    assert(ncap != NULL);
+
+    if (ref->ndefined == 0) {
+        ncap->ndefined = 0;
+        ncap->value = NULL;
+        return NC_NOERR;
+    }
+    ncap->value = NULL;
+
+
+    if (ref->ndefined > 0) {
+        size_t alloc_size = PNETCDF_RNDUP(ref->ndefined, PNC_ARRAY_GROWBY);
+        ncap->localids = (int *)  NCI_Calloc(alloc_size, SIZEOF_INT);
+        // ncap->indexes = (int *)  NCI_Calloc(alloc_size, SIZEOF_INT);
+        ncap->indexes = NULL;
+    }
+
+    /* don't duplicate  NC_var object */
+    ncap->ndefined = 0;
+    ncap->nread = ref->nread;
+    for (i=0; i<ref->ndefined; i++) {
+        ncap->localids[i] = ref->localids[i];
+        // ncap->indexes[i] = ref->indexes[i];
+        ncap->ndefined++;
+    }
+    if (status != NC_NOERR) {
+        ncmpio_free_NC_vararray(ncap);
+        return status;
+    }
+    assert(ncap->ndefined == ref->ndefined);
+
+#ifndef SEARCH_NAME_LINEARLY
+    /* allocate hashing lookup table, if not allocated yet */
+    ncap->hash_size = ref->hash_size;
+    ncap->nameT == NULL;
+#endif
+    return NC_NOERR;
+}
+
+
+
+
+
+
 /*----< ncmpi_close() >------------------------------------------------------*/
 /* This is a collective subroutine. */
 int
 ncmpi_close(int ncid)
 {
+
     int i, err;
     PNC *pncp;
 
@@ -893,6 +1595,7 @@ ncmpi_close(int ncid)
     if (err != NC_NOERR) return err;
 
     /* calling the subroutine that implements ncmpi_close() */
+
     err = pncp->driver->close(pncp->ncp);
 
     /* Remove from the PNCList, even if err != NC_NOERR */
@@ -901,7 +1604,6 @@ ncmpi_close(int ncid)
     /* free the PNC object */
     if (pncp->comm != MPI_COMM_WORLD && pncp->comm != MPI_COMM_SELF)
         MPI_Comm_free(&pncp->comm); /* a collective call */
-
     NCI_Free(pncp->path);
     for (i=0; i<pncp->nvars; i++)
         if (pncp->vars[i].shape != NULL)
@@ -913,13 +1615,18 @@ ncmpi_close(int ncid)
     return err;
 }
 
+
+
 /*----< ncmpi_enddef() >-----------------------------------------------------*/
 /* This is a collective subroutine. */
 int
 ncmpi_enddef(int ncid) {
     int err=NC_NOERR;
+    MPI_Offset malloc_size;
     PNC *pncp;
-
+    double start_tim, end_tim0, end_tim1, end_tim;
+    double comm_time, define_time, io_time;
+    start_tim = MPI_Wtime();
     /* check if ncid is valid */
     err = PNC_check_id(ncid, &pncp);
     if (err != NC_NOERR) return err;
@@ -936,12 +1643,227 @@ ncmpi_enddef(int ncid) {
     }
     else if (err != NC_NOERR) return err; /* fatal error */
 
+
+    /* ---------------------------------------------- META: serilize local metadata to buffer----------------------------------------------*/
+
+    //Duplicate old header dim array here
+    NC *ncp=(NC*)pncp->ncp;
+    NC_dimarray *old_dimarray = NCI_Malloc(sizeof(NC_dimarray));
+    NC_vararray *old_vararray = NCI_Malloc(sizeof(NC_vararray));
+    old_dimarray->nameT = NULL;
+    old_vararray->nameT = NULL;
+    err = shallow_dup_NC_dimarray(old_dimarray, &ncp->dims);
+    if (err != NC_NOERR) return err;
+
+    err = shallow_dup_NC_vararray(old_vararray, &ncp->vars, ncp->hash_size_attr);
+    if (err != NC_NOERR) return err;
+    
+    // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 0); 
+    struct hdr local_hdr;
+    //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 0);
+    err = baseline_extract_meta(pncp->ncp, &local_hdr); // this step doesn't free the dims and vars in ncp
+    //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 1);
+
+
+    int rank, size;
+    MPI_Comm_rank(pncp->comm, &rank);
+    MPI_Comm_size(pncp->comm, &size);
+
+    
+
+    // if (rank > 1){
+    // for (int i = 0; i < local_hdr.dims.ndefined; i++) {
+    //     printf("rank %d:  Name: %s, Size: %lld\n", rank,  local_hdr.dims.value[i]->name, local_hdr.dims.value[i]->size);
+    // }
+
+    // printf("    Variales:\n");
+    // for (int i = 0; i < local_hdr.vars.ndefined; i++) {
+    //     printf("rank %d;  Name: %s, Type: %d, NumDims: %d\n", rank, local_hdr.vars.value[i]->name,  local_hdr.vars.value[i]->xtype, 
+    //     local_hdr.vars.value[i]->ndims);
+    //     printf("    Dim IDs: ");
+    //     for (int j = 0; j < local_hdr.vars.value[i]->ndims; j++) {
+    //         printf("%d ", local_hdr.vars.value[i]->dimids[j]);
+    //     }
+    //     printf("\n");
+    //     printf("    Attributes:\n");
+    //     for (int k = 0; k < local_hdr.vars.value[i]->attrs.ndefined; k++) {
+    //         printf("      Name: %s, Nelems: %lld, Type: %d\n", local_hdr.vars.value[i]->attrs.value[k]->name, 
+    //         local_hdr.vars.value[i]->attrs.value[k]->nelems, local_hdr.vars.value[i]->attrs.value[k]->xtype);
+    //     }
+    // }
+    // }
+    // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 1);
+    char* send_buffer = (char*) NCI_Malloc(local_hdr.xsz);
+    // if (rank == 0)
+    //     printf("local_hdr size/MB: %d\n", local_hdr.xsz/1048576);
+    
+    err = serialize_hdr(&local_hdr, send_buffer);
+    //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 1);
+    // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 2);
+    
+    // free_hdr_vararray(&local_hdr.vars);
+    // free_hdr_dimarray(&local_hdr.dims);
+   
+    // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 3);
+    /* ---------------------------------------------- META: Communicate metadata size----------------------------------------------*/
+
+  // Phase 1: Communicate the sizes of the header structure for each process
+    MPI_Offset* all_collection_sizes = (MPI_Offset*) NCI_Malloc(size * sizeof(MPI_Offset));
+    
+    int mpireturn;
+
+    TRACE_COMM(MPI_Allgather)(&local_hdr.xsz, 1, MPI_OFFSET, all_collection_sizes, 1, MPI_OFFSET, pncp->comm);
+
+    /* ---------------------------------------------- META: Communicate metadata ----------------------------------------------*/
+    // Calculate displacements for the second phase
+    int* recv_displs = (int*) NCI_Malloc(size * sizeof(int));
+    int total_recv_size = all_collection_sizes[0];
+    recv_displs[0] = 0;
+    for (int i = 1; i < size; ++i) {
+        recv_displs[i] = recv_displs[i - 1] + all_collection_sizes[i - 1];
+        total_recv_size += all_collection_sizes[i];
+        
+    }
+    char* all_collections_buffer = (char*) NCI_Malloc(total_recv_size);
+
+
+    int* recvcounts =  (int*)NCI_Malloc(size * sizeof(int));
+    for (int i = 0; i < size; ++i) {
+        recvcounts[i] = (int)all_collection_sizes[i];
+    }
+    // Phase 2: Communicate the actual header data
+    // Before MPI_Allgatherv
+    TRACE_COMM(MPI_Allgatherv)(send_buffer, local_hdr.xsz, MPI_BYTE, all_collections_buffer, recvcounts, recv_displs, MPI_BYTE, pncp->comm);
+    // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 4);
+    NCI_Free(send_buffer);
+    ncmpio_free_NC_vararray(&ncp->vars);
+    ncmpio_free_NC_dimarray(&ncp->dims);
+    //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 2);
+    // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5);
+    
+  /* ---------------------------------------------- META: Deseralize metadata ----------------------------------------------*/
+
+    if (err != NC_NOERR) return err;
+        /* allocate buffer for header object NC */
+    // NC_dimarray *ncdims = (NC_dimarray*) NCI_Calloc(1, sizeof(NC_dimarray));
+    // NC_vararray *ncvars = (NC_vararray*) NCI_Calloc(1, sizeof(NC_vararray));
+    // ncdims->ndefined = 0;
+    // ncdims->unlimited_id = -1;
+    // ncvars->ndefined = 0;
+
+    ncp->dims.hash_size = old_dimarray->hash_size;
+    ncp->vars.hash_size = old_vararray->hash_size;
+    //reset pncp var array object
+    for (int i=0; i<pncp->nvars; i++)
+        if (pncp->vars[i].shape != NULL)
+            NCI_Free(pncp->vars[i].shape);
+    if (pncp->vars != NULL)
+        NCI_Free(pncp->vars);
+
+    pncp->ndims      = 0;
+    pncp->unlimdimid = -1;
+    pncp->nvars      = 0;
+    pncp->nrec_vars  = 0;
+    pncp->vars       = NULL;
+    // pncp->ncp.dims = *ncdims;
+    // pncp->ncp->vars = *ncvars;
+
+
+    // for (int i = 0; i < size; ++i) {
+    //     struct hdr *recv_hdr = (struct hdr*)NCI_Malloc(sizeof(struct hdr));
+    //     // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
+    //     deserialize_hdr(recv_hdr, all_collections_buffer + recv_displs[i], recvcounts[i]);
+    //     if (i==size-1)
+    //         NCI_Free(all_collections_buffer);
+    //     err = add_hdr(recv_hdr, i, rank, pncp, old_dimarray, old_vararray);
+    //     // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5+i+1);
+    //     free_hdr(recv_hdr);
+    //     if (err != NC_NOERR) return err;
+    // }
+
+    //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 4);
+    struct hdr **recv_hdrs = (struct hdr**)NCI_Malloc(size * sizeof(struct hdr*));
+
+    for (int i = 0; i < size; ++i) {
+        //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 43);
+        recv_hdrs[i]= (struct hdr*)NCI_Malloc(sizeof(struct hdr));
+        // printf("rank %d, recv_displs: %d, recvcounts: %d \n",  rank, recv_displs[i], recvcounts[i]);
+        deserialize_hdr(recv_hdrs[i], all_collections_buffer + recv_displs[i], recvcounts[i]);
+           
+        // err = add_hdr(recv_hdr, i, rank, pncp, old_dimarray, old_vararray);
+        //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 44);
+
+    }
+    //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5);
+    end_tim0 = MPI_Wtime();
+
+    for (int i = 0; i < size; ++i) {
+        err = add_hdr(recv_hdrs[i], i, rank, pncp, old_dimarray, old_vararray);
+        if (err != NC_NOERR) return err;
+        // free_hdr(recv_hdrs[i]);
+    }
+    //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 6);
+
+    for (int i = 0; i < size; ++i) {
+        free_hdr(recv_hdrs[i]);
+    }
+    NCI_Free(recv_hdrs);
+    NCI_Free(all_collections_buffer);
+    NCI_Free(all_collection_sizes);
+    NCI_Free(recv_displs);
+    NCI_Free(recvcounts);
+
+    
+    // #ifndef SEARCH_NAME_LINEARLY
+    //     /* initialize and populate name lookup tables ---------------------------*/
+    //     ncmpio_hash_table_populate_NC_dim(&ncp->dims);
+    //     ncmpio_hash_table_populate_NC_var(&ncp->vars);
+
+    // #endif
+    //update local id to index mapping based on index to local id mapping
+
+    //for (int j = 0; j < ncp->dims.ndefined; j++) ncp->dims.indexes[ncp->dims.localids[j]] = j;
+    
+    // for (int j = 0; j < ncp->vars.ndefined; j++) printf("\n rank: %d: ---- global id: %d ---- local id: %d", rank, j, ncp->vars.localids[j]);
+    // for (int j = 0; j < ncp->dims.ndefined; j++) printf("\n rank: %d:  %d : %d", rank, j, ncp->dims.localids[j]);
+    for (int j = 0; j < ncp->dims.ndefined; j++) ncp->dims.indexes[ncp->dims.localids[j]] = j;
+    for (int j = 0; j < ncp->vars.ndefined; j++) ncp->vars.indexes[ncp->vars.localids[j]] = j;
+    free_hdr_vararray(&local_hdr.vars);
+    free_hdr_dimarray(&local_hdr.dims);
+    ncmpio_free_NC_dimarray(old_dimarray);
+    ncmpio_free_NC_vararray(old_vararray);
+    NCI_Free(old_vararray);
+    NCI_Free(old_dimarray);
+
+
+
+
+    // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5+size+1);
+
     /* calling the subroutine that implements ncmpi_enddef() */
+    end_tim1 = MPI_Wtime();
     err = pncp->driver->enddef(pncp->ncp);
+
     if (err != NC_NOERR) return err;
 
     fClr(pncp->flag, NC_MODE_INDEP); /* default enters collective data mode */
     fClr(pncp->flag, NC_MODE_DEF);
+    // //pnetcdf_check_crt_mem(MPI_COMM_WORLD, 3);
+    end_tim = MPI_Wtime();
+    comm_time = end_tim0 - start_tim;
+    define_time = end_tim1 - end_tim0;
+    io_time = end_tim - end_tim1;
+    if (rank == 0) {
+        printf("[PnetCDF] End-define Phase Timings (seconds):\n");
+        printf("  - Metadata Exchange        : %8.6f\n", comm_time);
+        printf("  - Metadata consistency check : %8.6f\n", define_time);
+        printf("  - Metadata Write I/O       : %8.6f\n", io_time);
+        //print just the value, one per line
+        // printf("%f\n", comm_time);
+        // printf("%f\n", define_time);
+        // printf("%f\n", io_time);
+    }
+ 
     return NC_NOERR;
 }
 

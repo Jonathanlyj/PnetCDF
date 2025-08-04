@@ -347,27 +347,34 @@ int main(int argc, char *argv[]) {
     close_time = end_time - end_time3;
     end_to_end_time = end_time - start_time;
     mpi_time = end_time1 - start_time1;
-    double times[5] = {end_to_end_time, mpi_time, io_time, close_time, crt_time};
-    char *names[5] = {"end-end", "metadata exchange", "create (consistency check)", "close", "H5Dcreate & H5Gcreate"};
-    double max_times[5], min_times[5];
+    double times[4] = {end_to_end_time, mpi_time, io_time, close_time};
+    char *names[4] = {"End-to-end", "Metadata Exchange", "Metadata Consistency Check", "File Close"};
+    double max_times[4], min_times[4];
 
 
-    MPI_Reduce(&times[0], &max_times[0], 5, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-    MPI_Reduce(&times[0], &min_times[0], 5, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
-    if (rank == 0) printf("ik: %u, lk: %u\n", ik, lk);
-    for (int i = 0; i < 5; i++){
-        if (rank == 0) {
+    MPI_Reduce(&times[0], &max_times[0], 4, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&times[0], &min_times[0], 4, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
+    if (rank == 0) {
+        printf("[Application] Data Object Creation Timings (seconds):\n");
+        printf("  %-30s: %.6f\n", names[0], max_times[0]); // End-to-End
+        printf("  - %-30s: %.6f\n", names[1], max_times[1]); // Metadata Exchange
+        printf("  - %-30s: %.6f\n", names[2], max_times[2]); // Metadata Consistency check
+        printf("  - %-30s: %.6f\n", names[3], max_times[3]); // Close
+    }
+    // if (rank == 0) printf("ik: %u, lk: %u\n", ik, lk);
+    // for (int i = 0; i < 5; i++){
+    //     if (rank == 0) {
             
-            printf("Max %s time: %f seconds\n", names[i], max_times[i]);
-            printf("Min %s time: %f seconds\n", names[i], min_times[i]);
-        }
-    }
-    for (int i = 0; i < 5; i++){
-        if (rank == 0) {
-            printf("%f\n", names[i], max_times[i]);
-            printf("%f\n", names[i], min_times[i]);
-        }
-    }
+    //         printf("Max %s time: %f seconds\n", names[i], max_times[i]);
+    //         printf("Min %s time: %f seconds\n", names[i], min_times[i]);
+    //     }
+    // }
+    // for (int i = 0; i < 5; i++){
+    //     if (rank == 0) {
+    //         printf("%f\n", names[i], max_times[i]);
+    //         printf("%f\n", names[i], min_times[i]);
+    //     }
+    // }
     //     if (rank == 0) {
     //     printf("H5Gcreate2 called %d times on rank 0\n", group_create_count);
     //     printf("H5Dcreate called %d times on rank 0\n", dataset_create_count);

@@ -232,11 +232,13 @@ static int free_all_hdr(struct hdr **all_recv_hdr, int nproc){
 int main(int argc, char *argv[]) {
     MPI_Init(&argc, &argv);
     int rank, nproc, status, err, nerrs=0;
-    double end_to_end_time, mpi_time, io_time, enddef_time, close_time, max_time, min_time;
+    double end_to_end_time, mpi_time, create_time, enddef_time, close_time, max_time, min_time;
     double start_time, start_time1, end_time1, end_time2, end_time3, end_time;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &nproc);
-
+#ifdef MEM_TRACKING
+    pause_mem_tracking();
+#endif
     if (argc < 3) {
         if (rank == 0)
             fprintf(stderr, "Usage: %s <source_file> <output_file>\n", argv[0]);
@@ -253,8 +255,17 @@ int main(int argc, char *argv[]) {
     struct hdr all_hdr;
     read_metadata_from_file(file_name, &all_hdr);
     struct hdr local_hdr;
+#ifdef MEM_TRACKING
+    resume_mem_tracking();
+#endif
     distribute_metadata(rank, nproc, &all_hdr, &local_hdr);
+#ifdef MEM_TRACKING
+    pause_mem_tracking();
+#endif
     free_hdr_meta(&all_hdr);
+#ifdef MEM_TRACKING
+    resume_mem_tracking();
+#endif
     // struct hdr recv_hdr;
     // create_local_hdr_data(rank, &local_hdr);
 
@@ -369,7 +380,7 @@ int main(int argc, char *argv[]) {
     //     free_hdr_meta(recv_hdr);
     // }
     // pnetcdf_check_crt_mem(MPI_COMM_WORLD, 0);
-    io_time = MPI_Wtime() - end_time1;
+    create_time = MPI_Wtime() - end_time1;
 
 #ifdef MEM_TRACKING
     app_check_crt_mem(MPI_COMM_WORLD, 2);
@@ -410,26 +421,41 @@ int main(int argc, char *argv[]) {
     mpi_time = end_time1 - start_time1;
 
 
-    double times[6] = {end_to_end_time, mpi_time, io_time, enddef_time, total_def_time, close_time};
-    char *names[6] = {"end-end", "metadata exchange", "create (consistency check)", "enddef", "def_dim/var", "close"};
-    double max_times[6], min_times[6];
+    // double times[6] = {end_to_end_time, mpi_time, create_time, enddef_time, total_def_time, close_time};
+    // char *names[6] = {"end-end", "metadata exchange", "create (consistency check)", "enddef", "def_dim/var", "close"};
+    // double max_times[6], min_times[6];
 
 
-    MPI_Reduce(&times[0], &max_times[0], 6, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-    MPI_Reduce(&times[0], &min_times[0], 6, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
-    for (int i = 0; i < 6; i++) {
-        if (rank == 0) {
-            printf("Max %s time: %f seconds\n", names[i], max_times[i]);
-            printf("Min %s time: %f seconds\n", names[i], min_times[i]);
-        }
+    // MPI_Reduce(&times[0], &max_times[0], 6, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    // MPI_Reduce(&times[0], &min_times[0], 6, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
+    // for (int i = 0; i < 6; i++) {
+    //     if (rank == 0) {
+    //         printf("Max %s time: %f seconds\n", names[i], max_times[i]);
+    //         printf("Min %s time: %f seconds\n", names[i], min_times[i]);
+    //     }
+    // }
+    double times[5] = {end_to_end_time, mpi_time, create_time, enddef_time, close_time};
+    char *names[5] = {"End-to-End", "Metadata Exchange", "Metadata Consistency Check", "Metadata Write I/O (enddef)", "File Close"};
+    double max_times[5];
+
+    MPI_Reduce(&times[0], &max_times[0], 5, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+
+    if (rank == 0) {
+        printf("[Application] Data Object Creation Timings (seconds):\n");
+        printf("  %-30s: %.6f\n", names[0], max_times[0]); // End-to-End
+        printf("  - %-30s: %.6f\n", names[1], max_times[1]); // Metadata Exchange
+        printf("  - %-30s: %.6f\n", names[2], max_times[2]); // Metadata consistency check
+        printf("  - %-30s: %.6f\n", names[3], max_times[3]); // Metadata Write I/O
+        printf("  - %-30s: %.6f\n", names[4], max_times[4]); // Close
     }
+
 #ifdef MEM_TRACKING
     app_check_crt_mem(MPI_COMM_WORLD, 5);
     pnetcdf_check_crt_mem(MPI_COMM_WORLD, 5);
     pnetcdf_check_mem_usage(MPI_COMM_WORLD);
     app_check_mem_usage(MPI_COMM_WORLD);
-#endif
     free_allocation_struct();
+#endif
     MPI_Finalize();
     return 0;
 }
