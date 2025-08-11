@@ -55,7 +55,6 @@ This project requires the standard HDF5 and PnetCDF libraries, as well as custom
 
      # navigate to the root directory of the repository
 
-
      # prefix of install dir. One should modify this value.
      export PNETCDF_DIR_LIB=$HOME/pnetcdf/pnetcdf-lib-install
      # configure
@@ -133,7 +132,6 @@ This project requires the standard HDF5 and PnetCDF libraries, as well as custom
     - End-define                    : 0.136024
     - Close                         : 0.012277
    ```
-
 
 #### Memory footprint tracking for data object creation
 Heap memroy tracking at multiple checkpoints during data object creation can be enabled for PnetCDF-based tests (app_baseline_test_all/lib_baseline_test_all/new_format_test_all) by adjusting the following configuration in previous builds. **Note:** Enabling memory tracking will noticeably slow down runtime performance. It can be performed on a small-scale run and does not require an HPC environment.
