@@ -1,37 +1,153 @@
-# Data Object Creation Performance with Parallel I/O library
+## Data Object Creation Performance with Parallel I/O library
 
-This artifact repository accompanies our study on scalable parallel metadata management in paralllel I/O libraries. It evaluates three approaches for large-volume data object creation: (1) an application-level approach using the default I/O library that gathers metadata on all processes in order to generate a consistent copy before before invoking library APIs, (2) a library-level approach with internal metadata exchange and consistency check which enables independent object creation, and (3) a new file header format with partitioned metadata blocks that enables multiple MPI processes to create data objects independently and write
-metadata to the file header in parallel. The latter two approaches require modifications to the I/O library. This program reproduces the results from the paper and compares scalability across all approaches.
+This artifact repository accompanies our study on scalable parallel metadata management in parallel I/O libraries. It evaluates three approaches for large-volume data object creation: application-level baseline (with PnetCDF and HDF5 library), library-level baseline and new file format approaches. The latter two approaches require modifications to the I/O library. TThe experiments measure the performance and scalability of parallel data object creation using two Exa.TrkX-derived datasets: **dataset_568k** (568,480 arrays) and **dataset_5m** (5,684,800 arrays, 10× larger) for testing under higher metadata volume. To mimic graph generation workload in our tests, the test program first reads the metadata into memory from a prepared binary input file, and then performs the write operation on a shared output file using parallel I/O library, starting from data object creation.
 
-### Data Object Creation Benchmark and Performance Measure
+### Build instructions
+#### Install I/O libraries
+This project requires the standard HDF5 and PnetCDF libraries, as well as custom variants of PnetCDF developed for this study. The following sections provide detailed instructions for building these I/O libraries.
 
-The test experiments in this repository are designed to measure the performance and scalability of parallel data object creation using two datasets derived from the Exa.TrkX project, a High Energy Physics application focused on neutrino trajectory reconstruction. The first dataset, referred to as dataset 560k, contains 568,480 data arrays organized into 35,530 groups when stored in HDF5. The second dataset, dataset 5m, contains 5,684,800 data arrays (10× larger) and is used to evaluate performance under increased metadata volume. Both datasets are evenly partitioned among MPI processes to simulate the graph generation workload. In the real-world graph generation application, metadata for each data object is initially present in each process’s memory as the result of parallel computation. To mimic this condition in our tests, the test program first reads the metadata into memory from a prepared binary input file, and then performs the write operation on a shared output file using parallel I/O library, starting from data object creation.
-
-We measure runtime performance by collecting the end-to-end time, starting after metadata is loaded into memory and ending once all data objects are created and metadata is written to file. To identify major cost components, the test program profiles the runtime into metadata exchange time (MPI communication), metadata consistency check time (string and numerical comparisons), and other costs such as file writing and closing. All timings are reported as the maximum across all processes, except for the “others” category, which is calculated as the difference between the total end-to-end time and the sum of the metadata exchange and consistency check times. The detailed timing breakdowns collected are shown below:
-* Application-level approach:  Metadata exchange time is collected at the test program level as the time to serialize metadata, perform MPI_Allgather, and deserialize the result. Consistency check time is collected as the time to create data objects using library APIs (e.g., `ncmpi_def_var`, `ncmpi_def_dim` with PnetCDF), measured with a timer around data object creation stage.
-* Library-level approach: Metadata exchange time is collected within the library, using a timer wrapped around the relevant code inside the `ncmpi_enddef` function. Consistency check time is also collected within the library, measured as the time taken by `ncmpi_enddef` to reconstruct a complete metadata copy on each process
-* New header format approach: Metadata exchange time is collected as the time to synchronize metadata block information (index table), measured using a timer wrapped around the relevant code inside `ncmpi_enddef`. Consistency check time includes two components: (1) collected at the test program level as the time to create independent data objects on each process, using a timer wrapped around the object creation calls where intra-block consistency is checked; and (2) collected within `ncmpi_enddef` as the time to construct the metadata block index, where inter-block consistency and intra-block consistency for shared metadata block are checked. Given the dataset used and the scale of experiments in our study, the second component is small in pratice and can be considered negligible.
-
-### Software Libraries
-
-We use the following software libraries. Here, we provide scripts to install them on Perlmutter. The installation process on other platforms should be similar.
-
-1. HDF5 1.14.4-2 (for application-level baseline approach using HDF5)
+1. HDF5 1.14.4-2
     ```shell
-    # download source codes
-    wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.13/hdf5-1.14.4-2/src/hdf5-1.14.4-2.tar.gz
-    tar -xf hdf5-1.14.4-2.tar.gz
-    cd hdf5-1.14.4-2
+     # download source codes
+     wget https://github.com/HDFGroup/hdf5/releases/download/hdf5_1.14.4.2/hdf5-1.14.4-2.tar.gz
+     tar -xf hdf5-1.14.4-2.tar.gz
+     cd hdf5-1.14.4-2
 
-    # prefix of install dir. One should modify its value. (optional)
-    export PREFIX=/path/to/hddf/install
+     # prefix of install dir. One should modify its value.
+     export HDF5_DIR=$HOME/hdf5/HDF5-install
 
-    # configure
-    ../configure --prefix=${PREFIX} --enable-parallel --enable-build-mode=production
+     # configure
+     ./configure --prefix=${HDF5_DIR} --enable-parallel --enable-build-mode=production
     
-    # compile
-    make
+     # compile
+     make -j8
 
-    # install
-    make install
+     # install
+     make install
     ```
+
+2. PnetCDF 1.14.0
+   
+   Please refer to the instructions in [main README](../README.md) for required softwares (MPI and GNU Autotools) for PnetCDF.
+    ```shell
+     # make sure you are on pdsw_2025 branch
+     git checkout pdsw_2025
+     # go to top-level of this git repo
+     cd ..
+     # prefix of install dir. One should modify its value.
+     export PNETCDF_DIR=$HOME/pnetcdf/pnetcdf-install
+     # configure
+     autoreconf -i
+     ./configure --prefix=${PNETCDF_DIR} --disable-fortran --disable-cxx CC=cc --enable-shared=no 'CFLAGS=-Wall -O2'
+    
+     # compile
+     make -j8
+
+     # install
+     make install
+    ```
+
+3. Library-level Baseline Approach Implementation on PnetCDF 1.14.0
+    ```shell
+     # make sure you are on pdsw_2025_lib branch
+     git checkout pdsw_2025_lib
+
+     # navigate to the root directory of the repository
+     cd ..
+
+     # prefix of install dir. One should modify this value.
+     export PNETCDF_DIR_LIB=$HOME/pnetcdf/pnetcdf-lib-install
+     # configure
+     autoreconf -i
+     ./configure --prefix=${PNETCDF_DIR_LIB} --disable-fortran --disable-cxx CC=cc --enable-shared=no 'CFLAGS=-Wall -O2'
+    
+     # compile
+     make -j8
+
+     # install
+     make install
+    ```
+
+4. New Format Approach Implementation on PnetCDF 1.14.0
+    ```shell
+     # make sure you are on pdsw_new_format branch
+     git checkout pdsw_2025_new_format
+
+     # prefix of install dir. One should modify its value.
+     export PNETCDF_DIR_FORMAT=$HOME/pnetcdf/pnetcdf-format-install
+
+     # configure
+     autoreconf -i
+     ./configure --prefix=${PNETCDF_DIR_FORMAT} --disable-fortran --disable-cxx CC=cc --enable-shared=no 'CFLAGS=-Wall -O2'
+    
+     # compile
+     make -j8
+
+     # install
+     make install
+    ```
+
+#### Build data object creation test program
+    ```shell
+     # make sure you are on pdsw_2025 (or pdsw_2025_lib, pdsw_2025_new_format) branch
+     git checkout pdsw_2025
+     # specify installation paths of I/O libraries. One should modify the paths
+     export PNETCDF_DIR=$HOME/pnetcdf/pnetcdf-install
+     export PNETCDF_DIR_LIB=$HOME/pnetcdf/pnetcdf-lib-install
+     export PNETCDF_DIR_FORMAT=$HOME/pnetcdf/pnetcdf-format-install
+     export HDF5_DIR=$HOME/hdf5/hdf5-install
+     # compile and build all test programs
+     cd pdsw2025
+     make all
+    ```
+
+### Running the experiments
+
+#### Test and profile data object creation
+
+1. Prepare input metadata files
+   First, decompress the source metadata file `dataset_568k_metadata.tar.gz`.  
+   To generate a larger dataset, duplicate the base file using the utility program `create_ncopy_binary`.  
+   You can simply run `./data.sh` to execute this process and prepare dataset_568k and dataset_5m for the test programs.
+    ```shell
+    ./create_ncopy_binary <source_file> <duplicated_file> <optional: num_copies>
+    ```
+
+2. All executables for data object creation tests (app_baseline_test_all, h5_baseline_test_all, lib_baseline_test_all, new_format_test_all) follow the syntax below. Example scripts are provided in `run_[app/h5/lib/new].sh`. For execution in HPC enviroment, we provide an example SLURB job submission script for application-level data object creation test in `job_app.sh`.
+   ```
+   mpiexec -n <num_proc> <program_name> <source_metadata_file> <output_file>
+   ```
+   For PnetCDF-based executables, it is advised to configure hash table size using env variable `nc_hash_size_dim/var` for optimized consistenecy check.
+   
+3. We measure runtime performance by collecting the end-to-end time, starting after metadata is loaded into memory and ending once all data objects are created and metadata is written to file. The test program profiles the runtime into metadata exchange time, metadata consistency check time, and other costs such as file creation and closing. Timings are collected both at test program level and inside I/O library. An example of the output timing message of new file format approach is shown below:
+   ```
+    [PnetCDF] End-define Phase Timings (seconds):
+    - Metadata Exchange             : 0.000087
+    - Consistency check (inter-metadata block and shared metadata block): 0.000271
+    - Metadata Write I/O            : 0.042027
+    [Application] Data Object Creation Timings (seconds):
+    End-to-End                    : 0.363126
+    - Metadata Consistency Check (intra-metadata block): 0.213572
+    - End-define                    : 0.136024
+    - Close                         : 0.012277
+   ```
+
+
+#### Memory footprint tracking for data object creation
+Heap memroy tracking at multiple checkpoints during data object creation can be enabled for PnetCDF-based tests (app_baseline_test_all/lib_baseline_test_all/new_format_test_all) by adjusting the following configuration in previous builds. **Note:** Enabling memory tracking will noticeably slow down runtime performance. It can be performed on a small-scale run and does not require an HPC environment.
+* Add `--enable-profiling` flag in `./configure` command for PnetCDF installation to track memory usage in I/O library
+* Add `MEM_TRACK=1` flag in `make` command for test program build to track memory usage in application.
+
+#### Test and profile metadata read from file
+
+1. Perform data object creation and write out to file using previous write tests: app_baseline_test_all (classic netCDF format) and new_format_test_all (new header format)
+2. The executables for metadata read tests (app_baseline_read_test_all, new_format_read_test_all) follow the syntax below. The file generated during data object creation serves as the input argument. For execution in HPC enviroment, we provide an example SLURB job submission script for new header format test in `job_new_read.sh`.
+   ```
+   mpiexec -n <num_proc> <program_name> <created_file>
+   ```
+   An example output timing message that collects end-to-end read time is shown below:
+   ```
+   [Application] Metadata Read Time (seconds):
+    End-to-End: 4.166268
+   ```
+
