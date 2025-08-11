@@ -53,7 +53,8 @@ C_SRCS = ncmpio_driver.c \
          ncmpio_util.c \
          ncmpio_hash_func.c \
          ncmpio_file_io.c \
-         ncmpio_intra_node.c
+         ncmpio_intra_node.c \
+         ncmpio_block.c
 
 $(M4_SRCS:.m4=.c): Makefile
 

@@ -55,7 +55,6 @@ This project requires the standard HDF5 and PnetCDF libraries, as well as custom
 
      # navigate to the root directory of the repository
 
-
      # prefix of install dir. One should modify this value.
      export PNETCDF_DIR_LIB=$HOME/pnetcdf/pnetcdf-lib-install
      # configure

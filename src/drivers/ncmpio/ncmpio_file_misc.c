@@ -33,7 +33,44 @@
 #include <common.h>
 #include "ncmpio_NC.h"
 
-/*----< dup_NC() >-----------------------------------------------------------*/
+// /*----< dup_NC() >-----------------------------------------------------------*/
+// static NC *
+// dup_NC(const NC *ref)
+// {
+//     NC *ncp;
+
+//     ncp = (NC *) NCI_Calloc(1, sizeof(NC));
+//     if (ncp == NULL) return NULL;
+
+//     /* copy most of the NC members over */
+//     *ncp = *ref;
+
+// #ifndef SEARCH_NAME_LINEARLY
+//     /* set hash tables to NULL, indicating space not-yet allocated */
+//     ncp->dims.nameT = NULL;
+//     ncp->vars.nameT = NULL;
+//     ncp->attrs.nameT = NULL;
+// #endif
+
+//     if (ncmpio_dup_NC_dimarray(&ncp->dims,   &ref->dims)  != NC_NOERR ||
+//         ncmpio_dup_NC_attrarray(&ncp->attrs, &ref->attrs) != NC_NOERR ||
+//         ncmpio_dup_NC_vararray(&ncp->vars,   &ref->vars, ref->hash_size_attr) != NC_NOERR) {
+//         ncmpio_free_NC(ncp);
+//         return NULL;
+//     }
+
+//     /* fields below should not copied from ref */
+//     ncp->comm       = MPI_COMM_NULL;
+//     ncp->mpiinfo    = MPI_INFO_NULL;
+//     ncp->get_list   = NULL;
+//     ncp->put_list   = NULL;
+//     ncp->abuf       = NULL;
+//     ncp->path       = NULL;
+
+//     return ncp;
+// }
+
+// /*----<META: dup_NC() >-----------------------------------------------------------*/
 static NC *
 dup_NC(const NC *ref)
 {
@@ -47,25 +84,28 @@ dup_NC(const NC *ref)
 
 #ifndef SEARCH_NAME_LINEARLY
     /* set hash tables to NULL, indicating space not-yet allocated */
-    ncp->dims.nameT = NULL;
-    ncp->vars.nameT = NULL;
     ncp->attrs.nameT = NULL;
 #endif
-
-    if (ncmpio_dup_NC_dimarray(&ncp->dims,   &ref->dims)  != NC_NOERR ||
-        ncmpio_dup_NC_attrarray(&ncp->attrs, &ref->attrs) != NC_NOERR ||
-        ncmpio_dup_NC_vararray(&ncp->vars,   &ref->vars, ref->hash_size_attr) != NC_NOERR) {
-        ncmpio_free_NC(ncp);
-        return NULL;
-    }
-
+    // ncp->blockinfo = (NC_blockinfo **) NCI_Calloc(ref->nblocks, sizeof(NC_blockinfo *));
+    // for (int i=0;i++;i<ref->nblocks) {
+    //     ncp->blockinfo[i] = (NC_blockinfo *) NCI_Calloc(1, sizeof(NC_blockinfo));
+    //     if (ncp->blockinfo[i] == NULL) return NULL;
+    //     ncp->blockinfo[i]->name = (char *) NCI_Malloc(strlen(ref->blockinfo[i]->name)+1);
+    //     if (ncp->blockinfo[i]->name == NULL) return NULL;
+    //     strcpy(ncp->blockinfo[i]->name, ref->blockinfo[i]->name);
+    // }
+    // if (ncmpio_dup_NC_blockarray(&ncp->blocks,   &ref->blocks)  != NC_NOERR ||
+    //     ncmpio_dup_NC_attrarray(&ncp->attrs, &ref->attrs) != NC_NOERR){
+    //     ncmpio_free_NC(ncp);
+    //     return NULL;
+    // }
     if (ref->nonaggr_ranks != NULL) {
         size_t len = sizeof(int) * ncp->num_nonaggrs;
         ncp->nonaggr_ranks = (int*) NCI_Malloc(len);
         memcpy(ncp->nonaggr_ranks, ref->nonaggr_ranks, len);
     }
-
     /* fields below should not copied from ref */
+
     ncp->comm       = MPI_COMM_NULL;
     ncp->mpiinfo    = MPI_INFO_NULL;
     ncp->get_list   = NULL;
@@ -75,6 +115,44 @@ dup_NC(const NC *ref)
 
     return ncp;
 }
+
+// /*----< dup_NC() >-----------------------------------------------------------*/
+// static NC *
+// dup_NC(const NC *ref)
+// {
+//     NC *ncp;
+
+//     ncp = (NC *) NCI_Calloc(1, sizeof(NC));
+//     if (ncp == NULL) return NULL;
+
+//     /* copy most of the NC members over */
+//     *ncp = *ref;
+
+// #ifndef SEARCH_NAME_LINEARLY
+//     /* set hash tables to NULL, indicating space not-yet allocated */
+//     ncp->dims.nameT = NULL;
+//     ncp->vars.nameT = NULL;
+//     ncp->attrs.nameT = NULL;
+// #endif
+
+//     if (ncmpio_dup_NC_dimarray(&ncp->dims,   &ref->dims)  != NC_NOERR ||
+//         ncmpio_dup_NC_attrarray(&ncp->attrs, &ref->attrs) != NC_NOERR ||
+//         ncmpio_dup_NC_vararray(&ncp->vars,   &ref->vars, ref->hash_size_attr) != NC_NOERR) {
+//         ncmpio_free_NC(ncp);
+//         return NULL;
+//     }
+
+//     /* fields below should not copied from ref */
+//     ncp->comm       = MPI_COMM_NULL;
+//     ncp->mpiinfo    = MPI_INFO_NULL;
+//     ncp->get_list   = NULL;
+//     ncp->put_list   = NULL;
+//     ncp->abuf       = NULL;
+//     ncp->path       = NULL;
+
+//     return ncp;
+// }
+
 
 /*----< ncmpio_redef() >-----------------------------------------------------*/
 /* This is a collective subroutine. */
@@ -231,23 +309,64 @@ ncmpio_abort(void *ncdp)
     return status;
 }
 
-/*----< ncmpio_inq() >-------------------------------------------------------*/
+/*----< META: ncmpio_inq() >-------------------------------------------------------*/
 int
 ncmpio_inq(void *ncdp,
-           int  *ndimsp,
-           int  *nvarsp,
-           int  *nattsp,
-           int  *xtendimp)
+           int  *nblksp,
+           int  *nattsp)
 {
     NC *ncp = (NC*)ncdp;
 
-    if (ndimsp   != NULL) *ndimsp   = ncp->dims.ndefined;
-    if (nvarsp   != NULL) *nvarsp   = ncp->vars.ndefined;
+    if (nblksp   != NULL) *nblksp   = ncp->blocks.ndefined;
     if (nattsp   != NULL) *nattsp   = ncp->attrs.ndefined;
-    if (xtendimp != NULL) *xtendimp = ncp->dims.unlimited_id;
+
 
     return NC_NOERR;
 }
+
+/*----< ncmpio_inq() >-------------------------------------------------------*/
+int
+ncmpio_inq_block(void *ncdp,
+                int blkid,
+                char *name,
+                int *ndimsp, 
+                int *nvarsp, 
+                int *xtendimp)
+{
+    NC *ncp = (NC*)ncdp;
+    blkid = ncp->blocks.globalids[blkid];
+
+    
+    if (blkid < 0 || blkid >= ncp->blocks.ndefined) DEBUG_RETURN_ERROR(NC_EINVAL)
+    if (name != NULL)
+        /* in PnetCDF, name is always NULL character terminated */
+        strcpy(name, ncp->blocks.value[blkid]->name);
+    if (ndimsp   != NULL) *ndimsp   = ncp->blocks.value[blkid]->dims.ndefined;
+    if (nvarsp   != NULL) *nvarsp   = ncp->blocks.value[blkid]->vars.ndefined;
+    if (xtendimp != NULL) *xtendimp = ncp->blocks.value[blkid]->dims.unlimited_id;
+    
+
+    return NC_NOERR;
+}
+
+
+// /*----< ncmpio_inq() >-------------------------------------------------------*/
+// int
+// ncmpio_inq(void *ncdp,
+//            int  *ndimsp,
+//            int  *nvarsp,
+//            int  *nattsp,
+//            int  *xtendimp)
+// {
+//     NC *ncp = (NC*)ncdp;
+
+//     if (ndimsp   != NULL) *ndimsp   = ncp->dims.ndefined;
+//     if (nvarsp   != NULL) *nvarsp   = ncp->vars.ndefined;
+//     if (nattsp   != NULL) *nattsp   = ncp->attrs.ndefined;
+//     if (xtendimp != NULL) *xtendimp = ncp->dims.unlimited_id;
+
+//     return NC_NOERR;
+// }
 
 /*----< ncmpio_inq_misc() >--------------------------------------------------*/
 /* This is an independent subroutine. */

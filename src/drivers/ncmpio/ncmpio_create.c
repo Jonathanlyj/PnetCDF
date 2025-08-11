@@ -266,6 +266,8 @@ ncmpio_create(MPI_Comm     comm,
     fClr(ncp->flags, NC_MODE_FILL);
 
     ncp->ncid = ncid;
+    //META
+    ncp->blocks.nread = 0;
 
     /* chunk size for reading header, set to default before check hints */
     ncp->chunk = PNC_DEFAULT_CHUNKSIZE;
@@ -274,9 +276,6 @@ ncmpio_create(MPI_Comm     comm,
      * No need to do this now.
      * ncp->xsz = ncmpio_hdr_len_NC(ncp);
      */
-
-    /* initialize unlimited_id as no unlimited dimension yet defined */
-    ncp->dims.unlimited_id = -1;
 
     /* buffer to pack noncontiguous user buffers when calling wait() */
     ncp->ibuf_size = PNC_DEFAULT_IBUF_SIZE;

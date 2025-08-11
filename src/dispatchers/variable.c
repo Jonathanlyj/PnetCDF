@@ -22,6 +22,7 @@
 /* this API is collective, and must be called in define mode */
 int
 ncmpi_def_var(int         ncid,    /* IN:  file ID */
+              int         blkid,
               const char *name,    /* IN:  name of variable */
               nc_type     type,
               int         ndims,
@@ -106,7 +107,7 @@ ncmpi_def_var(int         ncid,    /* IN:  file ID */
 
     /* check whether new name is already in use, for this API (def_var) the
      * name should NOT already exist */
-    err = pncp->driver->inq_varid(pncp->ncp, name, NULL);
+    err = pncp->driver->inq_varid(pncp->ncp, name, blkid, NULL);
     if (err != NC_ENOTVAR) {
         DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
         goto err_check;
@@ -120,7 +121,7 @@ ncmpi_def_var(int         ncid,    /* IN:  file ID */
         goto err_check;
     }
     for (i=0; i<ndims; i++) {
-        if (dimids[i] < 0 || pncp->ndims == 0 || dimids[i] >= pncp->ndims) {
+        if (dimids[i] < 0 || pncp->blocks[blkid].ndims == 0 || dimids[i] >= pncp->blocks[blkid].ndims) {
             DEBUG_ASSIGN_ERROR(err, NC_EBADDIM)
             goto err_check;
         }
@@ -201,36 +202,36 @@ err_check:
     if (err != NC_NOERR) return err;
 
     /* calling the subroutine that implements ncmpi_def_var() */
-    err = pncp->driver->def_var(pncp->ncp, name, type, ndims, dimids, varidp);
+    err = pncp->driver->def_var(pncp->ncp, blkid, name, type, ndims, dimids, varidp);
     if (err != NC_NOERR) return err;
 
-    assert(*varidp == pncp->nvars);
+    assert(*varidp == pncp->blocks[blkid].nvars);
 
     /* add new variable into pnc-vars[] */
-    if (pncp->nvars % PNC_VARS_CHUNK == 0)
-        pncp->vars = NCI_Realloc(pncp->vars,
-                                 (pncp->nvars+PNC_VARS_CHUNK)*sizeof(PNC_var));
+    if (pncp->blocks[blkid].nvars % PNC_VARS_CHUNK == 0)
+        pncp->blocks[blkid].vars = NCI_Realloc(pncp->blocks[blkid].vars,
+                                 (pncp->blocks[blkid].nvars+PNC_VARS_CHUNK)*sizeof(PNC_var));
 
-    pncp->vars[*varidp].ndims  = ndims;
-    pncp->vars[*varidp].xtype  = type;
-    pncp->vars[*varidp].recdim = -1;   /* if fixed-size variable */
-    pncp->vars[*varidp].shape  = NULL;
+    pncp->blocks[blkid].vars[*varidp].ndims  = ndims;
+    pncp->blocks[blkid].vars[*varidp].xtype  = type;
+    pncp->blocks[blkid].vars[*varidp].recdim = -1;   /* if fixed-size variable */
+    pncp->blocks[blkid].vars[*varidp].shape  = NULL;
     if (ndims > 0) {
-        if (dimids[0] == pncp->unlimdimid) { /* record variable */
-            pncp->vars[*varidp].recdim = pncp->unlimdimid;
-            pncp->nrec_vars++;
+        if (dimids[0] == pncp->blocks[blkid].unlimdimid) { /* record variable */
+            pncp->blocks[blkid].vars[*varidp].recdim = pncp->blocks[blkid].unlimdimid;
+            pncp->blocks[blkid].nrec_vars++;
         }
 
-        pncp->vars[*varidp].shape = (MPI_Offset*)
+        pncp->blocks[blkid].vars[*varidp].shape = (MPI_Offset*)
                                     NCI_Malloc(ndims * SIZEOF_MPI_OFFSET);
         for (i=0; i<ndims; i++) {
             /* obtain size of dimension i */
-            err = pncp->driver->inq_dim(pncp->ncp, dimids[i], NULL,
-                                        pncp->vars[*varidp].shape+i);
+            err = pncp->driver->inq_dim(pncp->ncp, blkid, dimids[i], NULL,
+                                        pncp->blocks[blkid].vars[*varidp].shape+i);
             if (err != NC_NOERR) return err;
         }
     }
-    pncp->nvars++;
+    pncp->blocks[blkid].nvars++;
 
     return NC_NOERR;
 }
@@ -239,6 +240,7 @@ err_check:
 /* this API is collective, and must be called in define mode */
 int
 ncmpi_def_var_fill(int         ncid,    /* IN:  file ID */
+                   int         blkid,
                    int         varid,
                    int         nofill,
                    const void *fill_value)
@@ -280,13 +282,14 @@ err_check:
     if (err != NC_NOERR) return err;
 
     /* calling the subroutine that implements ncmpi_def_var_fill() */
-    return pncp->driver->def_var_fill(pncp->ncp, varid, nofill, fill_value);
+    return pncp->driver->def_var_fill(pncp->ncp, blkid, varid, nofill, fill_value);
 }
 
 /*----< ncmpi_inq_varid() >--------------------------------------------------*/
 /* This is an independent subroutine */
 int
 ncmpi_inq_varid(int         ncid,    /* IN:  file ID */
+                int         blkid,
                 const char *name,    /* IN:  name of variable */
                 int        *varidp)  /* OUT: variable ID */
 {
@@ -302,13 +305,14 @@ ncmpi_inq_varid(int         ncid,    /* IN:  file ID */
     if (strlen(name) > NC_MAX_NAME) DEBUG_RETURN_ERROR(NC_EMAXNAME)
 
     /* calling the subroutine that implements ncmpi_inq_varid() */
-    return pncp->driver->inq_varid(pncp->ncp, name, varidp);
+    return pncp->driver->inq_varid(pncp->ncp, name, blkid, varidp);
 }
 
 /*----< ncmpi_inq_var() >----------------------------------------------------*/
 /* This is an independent subroutine */
 int
 ncmpi_inq_var(int      ncid,    /* IN:  file ID */
+              int      blkid,
               int      varid,   /* IN:  variable ID */
               char    *name,    /* OUT: name of variable */
               nc_type *xtypep,
@@ -326,16 +330,17 @@ ncmpi_inq_var(int      ncid,    /* IN:  file ID */
     /* using NC_GLOBAL in varid is illegal for this API. See
      * http://www.unidata.ucar.edu/mailing_lists/archives/netcdfgroup/2015/msg00196.html
      */
-    if (varid == NC_GLOBAL &&
-        (name != NULL || xtypep != NULL || ndimsp != NULL || dimids != NULL))
-        DEBUG_RETURN_ERROR(NC_EGLOBAL)
+    //META: with new file format, we turn off this check for now
+    // if (varid == NC_GLOBAL &&
+    //     (name != NULL || xtypep != NULL || ndimsp != NULL || dimids != NULL))
+    //     DEBUG_RETURN_ERROR(NC_EGLOBAL)
 
-    /* check whether variable ID is valid */
-    if (varid != NC_GLOBAL && (varid < 0 || varid >= pncp->nvars))
-        DEBUG_RETURN_ERROR(NC_ENOTVAR)
+    // /* check whether variable ID is valid */
+    // if (varid != NC_GLOBAL && (varid < 0 || varid >= pncp->nvars))
+    //     DEBUG_RETURN_ERROR(NC_ENOTVAR)
 
     /* calling the subroutine that implements ncmpi_inq_var() */
-    return pncp->driver->inq_var(pncp->ncp, varid, name, xtypep, ndimsp,
+    return pncp->driver->inq_var(pncp->ncp, blkid, varid, name, xtypep, ndimsp,
                                  dimids, nattsp, NULL, NULL, NULL);
 }
 
@@ -362,7 +367,8 @@ ncmpi_inq_varname(int   ncid,    /* IN:  file ID */
     if (varid < 0 || varid >= pncp->nvars) DEBUG_RETURN_ERROR(NC_ENOTVAR)
 
     /* calling the subroutine that implements ncmpi_inq_varname() */
-    return pncp->driver->inq_var(pncp->ncp, varid, name, NULL, NULL,
+    //META: TODO: fix blkid here by adding blkid input argument to the function 
+    return pncp->driver->inq_var(pncp->ncp, NULL, varid, name, NULL, NULL,
                                  NULL, NULL, NULL, NULL, NULL);
 }
 
@@ -393,7 +399,7 @@ ncmpi_inq_vartype(int      ncid,    /* IN:  file ID */
 
 #if 0
     /* calling the subroutine that implements ncmpi_inq_vartype() */
-    return pncp->driver->inq_var(pncp->ncp, varid, NULL, xtypep, NULL,
+    return pncp->driver->inq_var(pncp->ncp, NULL, varid, NULL, xtypep, NULL,
                                  NULL, NULL, NULL, NULL, NULL);
 #endif
 }
@@ -425,7 +431,7 @@ ncmpi_inq_varndims(int  ncid,    /* IN:  file ID */
 
 #if 0
     /* calling the subroutine that implements ncmpi_inq_varndims() */
-    return pncp->driver->inq_var(pncp->ncp, varid, NULL, NULL, ndimsp,
+    return pncp->driver->inq_var(pncp->ncp, NULL, varid, NULL, NULL, ndimsp,
                                  NULL, NULL, NULL, NULL, NULL);
 #endif
 }
@@ -453,7 +459,7 @@ ncmpi_inq_vardimid(int  ncid,    /* IN:  file ID */
     if (varid < 0 || varid >= pncp->nvars) DEBUG_RETURN_ERROR(NC_ENOTVAR)
 
     /* calling the subroutine that implements ncmpi_inq_vardimid() */
-    return pncp->driver->inq_var(pncp->ncp, varid, NULL, NULL, NULL,
+    return pncp->driver->inq_var(pncp->ncp, NULL, varid, NULL, NULL, NULL,
                                  dimids, NULL, NULL, NULL, NULL);
 }
 
@@ -476,7 +482,7 @@ ncmpi_inq_varnatts(int  ncid,    /* IN:  file ID */
          DEBUG_RETURN_ERROR(NC_ENOTVAR)
 
     /* calling the subroutine that implements ncmpi_inq_varnatts() */
-    return pncp->driver->inq_var(pncp->ncp, varid, NULL, NULL, NULL,
+    return pncp->driver->inq_var(pncp->ncp, NULL, varid, NULL, NULL, NULL,
                                  NULL, nattsp, NULL, NULL, NULL);
 }
 
@@ -503,7 +509,7 @@ ncmpi_inq_varoffset(int         ncid,   /* IN: file ID */
     if (varid < 0 || varid >= pncp->nvars) DEBUG_RETURN_ERROR(NC_ENOTVAR)
 
     /* calling the subroutine that implements ncmpi_inq_varoffset() */
-    return pncp->driver->inq_var(pncp->ncp, varid, NULL, NULL, NULL,
+    return pncp->driver->inq_var(pncp->ncp, NULL, varid, NULL, NULL, NULL,
                                  NULL, NULL, offset, NULL, NULL);
 }
 
@@ -531,7 +537,7 @@ ncmpi_inq_var_fill(int   ncid,
     if (varid < 0 || varid >= pncp->nvars) DEBUG_RETURN_ERROR(NC_ENOTVAR)
 
     /* calling the subroutine that implements ncmpi_inq_var_fill() */
-    return pncp->driver->inq_var(pncp->ncp, varid, NULL, NULL, NULL,
+    return pncp->driver->inq_var(pncp->ncp, NULL, varid, NULL, NULL, NULL,
                                  NULL, NULL, NULL, no_fill, fill_value);
 }
 
@@ -539,6 +545,7 @@ ncmpi_inq_var_fill(int   ncid,
 /* this API is collective and can only be called in collective data mode */
 int
 ncmpi_fill_var_rec(int        ncid,
+                   int        blkid,
                    int        varid,
                    MPI_Offset recno)
 {
@@ -592,13 +599,14 @@ err_check:
     }
 
     /* calling the subroutine that implements ncmpi_fill_var_rec() */
-    return pncp->driver->fill_var_rec(pncp->ncp, varid, recno);
+    return pncp->driver->fill_var_rec(pncp->ncp, blkid, varid, recno);
 }
 
 /*----< ncmpi_rename_var() >-------------------------------------------------*/
 /* This is a collective subroutine */
 int
 ncmpi_rename_var(int         ncid,    /* IN: file ID */
+                 int         blkid,
                  int         varid,   /* IN: variable ID */
                  const char *newname) /* IN: name of variable */
 {
@@ -644,7 +652,7 @@ ncmpi_rename_var(int         ncid,    /* IN: file ID */
 
     /* check whether new name is already in use, for this API (rename) the
      * name should NOT already exist */
-    err = pncp->driver->inq_varid(pncp->ncp, newname, NULL);
+    err = pncp->driver->inq_varid(pncp->ncp, newname, blkid, NULL);
     if (err != NC_ENOTVAR) { /* expecting NC_ENOTVAR */
         DEBUG_ASSIGN_ERROR(err, NC_ENAMEINUSE)
         goto err_check;
@@ -700,6 +708,6 @@ err_check:
     if (err != NC_NOERR) return err;
 
     /* calling the subroutine that implements ncmpi_rename_var() */
-    return pncp->driver->rename_var(pncp->ncp, varid, newname);
+    return pncp->driver->rename_var(pncp->ncp, blkid, varid, newname);
 }
 

@@ -42,10 +42,10 @@ extern int
 ncmpio_set_fill(void *ncdp, int fill_mode, int *old_fill_mode);
 
 extern int
-ncmpio_fill_var_rec(void *ncdp, int varid, MPI_Offset recno);
+ncmpio_fill_var_rec(void *ncdp, int blkid, int varid, MPI_Offset recno);
 
 extern int
-ncmpio_inq(void *ncdp, int *ndimsp, int *nvarsp, int *nattsp, int *xtendimp);
+ncmpio_inq(void *ncdp, int *nblksp, int *nattsp);
 
 extern int
 ncmpio_inq_misc(void *ncdp, int *pathlen, char *path, int *num_fix_varsp,
@@ -65,16 +65,28 @@ extern int
 ncmpio_end_indep_data(void *ncdp);
 
 extern int
-ncmpio_def_dim(void *ncdp, const char *name, MPI_Offset size, int *dimidp);
+ncmpio_def_dim(void *ncdp, int blkid, const char *name, MPI_Offset size, int *dimidp);
 
 extern int
-ncmpio_inq_dimid(void *ncdp, const char *name, int *dimidp);
+ncmpio_def_block(void *ncdp, const char *name, int *blkidp);
+
+extern int 
+ncmpio_open_block(void *ncdp, int blkid);
 
 extern int
-ncmpio_inq_dim(void *ncdp, int dimid, char *name, MPI_Offset *lengthp);
+ncmpio_inq_dimid(void *ncdp, int blkid, const char *name, int *dimidp);
 
 extern int
-ncmpio_rename_dim(void *ncdp, int dimid, const char *newname);
+ncmpio_inq_blkid(void *ncdp, const char *name, int *dimidp);
+
+extern int
+ncmpio_inq_block(void *ncdp, int blkid, char *name, int *ndimsp, int *nvarsp, int *xtendimp);
+
+extern int
+ncmpio_inq_dim(void *ncdp, int blkid, int dimid, char *name, MPI_Offset *lengthp);
+
+extern int
+ncmpio_rename_dim(void *ncdp, int blkid, int dimid, const char *newname);
 
 extern int
 ncmpio_inq_att(void *ncdp, int varid, const char *name, nc_type *xtypep, MPI_Offset *lenp);
@@ -101,56 +113,56 @@ extern int
 ncmpio_put_att(void *ncdp, int varid, const char *name, nc_type xtype, MPI_Offset nelems, const void *value, MPI_Datatype itype);
 
 extern int
-ncmpio_def_var(void *ncdp, const char *name, nc_type type, int ndims, const int *dimids, int *varidp);
+ncmpio_def_var(void *ncdp, int blkid, const char *name, nc_type type, int ndims, const int *dimids, int *varidp);
 
 extern int
-ncmpio_def_var_fill(void *ncdp, int varid, int nofill, const void *fill_value);
+ncmpio_def_var_fill(void *ncdp, int blkid, int varid, int nofill, const void *fill_value);
 
 extern int
-ncmpio_inq_var(void *ncdp, int varid, char *name, nc_type *xtypep, int *ndimsp,
+ncmpio_inq_var(void *ncdp, int blkid, int varid, char *name, nc_type *xtypep, int *ndimsp,
                int *dimids, int *nattsp, MPI_Offset *offsetp, int *no_fill, void *fill_value);
 
 extern int
-ncmpio_inq_varid(void *ncdp, const char *name, int *varid);
+ncmpio_inq_varid(void *ncdp,  const char *name, int blkid, int *varid);
 
 extern int
-ncmpio_rename_var(void *ncdp, int varid, const char *newname);
+ncmpio_rename_var(void *ncdp, int blkid, int varid, const char *newname);
 
 extern int
-ncmpio_get_var(void *ncdp, int varid, const MPI_Offset *start, const MPI_Offset *count, const MPI_Offset *stride, const MPI_Offset *imap, void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int reqMode);
+ncmpio_get_var(void *ncdp, int blkid, int varid, const MPI_Offset *start, const MPI_Offset *count, const MPI_Offset *stride, const MPI_Offset *imap, void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int reqMode);
 
 extern int
-ncmpio_put_var(void *ncdp, int varid, const MPI_Offset *start, const MPI_Offset *count, const MPI_Offset *stride, const MPI_Offset *imap, const void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int reqMode);
+ncmpio_put_var(void *ncdp, int blkid, int varid, const MPI_Offset *start, const MPI_Offset *count, const MPI_Offset *stride, const MPI_Offset *imap, const void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int reqMode);
 
 extern int
-ncmpio_get_varn(void *ncdp, int varid, int num, MPI_Offset* const *starts, MPI_Offset* const *counts, void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int reqMode);
+ncmpio_get_varn(void *ncdp, int blkid, int varid, int num, MPI_Offset* const *starts, MPI_Offset* const *counts, void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int reqMode);
 
 extern int
-ncmpio_put_varn(void *ncdp, int varid, int num, MPI_Offset* const *starts, MPI_Offset* const *counts, const void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int reqMode);
+ncmpio_put_varn(void *ncdp, int blkid, int varid, int num, MPI_Offset* const *starts, MPI_Offset* const *counts, const void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int reqMode);
 
 extern int
-ncmpio_get_vard(void *ncdp, int varid, MPI_Datatype filetype, void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int reqMode);
+ncmpio_get_vard(void *ncdp, int blkid, int varid, MPI_Datatype filetype, void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int reqMode);
 
 extern int
-ncmpio_put_vard(void *ncdp, int varid, MPI_Datatype filetype, const void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int reqMode);
+ncmpio_put_vard(void *ncdp, int blkid, int varid, MPI_Datatype filetype, const void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int reqMode);
 
 extern int
-ncmpio_iget_var(void *ncdp, int varid, const MPI_Offset *start, const MPI_Offset *count, const MPI_Offset *stride, const MPI_Offset *imap, void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int *req, int reqMode);
+ncmpio_iget_var(void *ncdp, int blkid, int varid, const MPI_Offset *start, const MPI_Offset *count, const MPI_Offset *stride, const MPI_Offset *imap, void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int *req, int reqMode);
 
 extern int
-ncmpio_iput_var(void *ncdp, int varid, const MPI_Offset *start, const MPI_Offset *count, const MPI_Offset *stride, const MPI_Offset *imap, const void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int *req, int reqMode);
+ncmpio_iput_var(void *ncdp, int blkid, int varid, const MPI_Offset *start, const MPI_Offset *count, const MPI_Offset *stride, const MPI_Offset *imap, const void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int *req, int reqMode);
 
 extern int
-ncmpio_bput_var(void *ncdp, int varid, const MPI_Offset *start, const MPI_Offset *count, const MPI_Offset *stride, const MPI_Offset *imap, const void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int *req, int reqMode);
+ncmpio_bput_var(void *ncdp, int blkid, int varid, const MPI_Offset *start, const MPI_Offset *count, const MPI_Offset *stride, const MPI_Offset *imap, const void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int *req, int reqMode);
 
 extern int
-ncmpio_iget_varn(void *ncdp, int varid, int num, MPI_Offset* const *starts, MPI_Offset* const *counts, void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int *reqid, int reqMode);
+ncmpio_iget_varn(void *ncdp, int blkid, int varid, int num, MPI_Offset* const *starts, MPI_Offset* const *counts, void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int *reqid, int reqMode);
 
 extern int
-ncmpio_iput_varn(void *ncdp, int varid, int num, MPI_Offset* const *starts, MPI_Offset* const *counts, const void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int *reqid, int reqMode);
+ncmpio_iput_varn(void *ncdp, int blkid, int varid, int num, MPI_Offset* const *starts, MPI_Offset* const *counts, const void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int *reqid, int reqMode);
 
 extern int
-ncmpio_bput_varn(void *ncdp, int varid, int num, MPI_Offset* const *starts, MPI_Offset* const *counts, const void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int *reqid, int reqMode);
+ncmpio_bput_varn(void *ncdp, int blkid, int varid, int num, MPI_Offset* const *starts, MPI_Offset* const *counts, const void *buf, MPI_Offset bufcount, MPI_Datatype buftype, int *reqid, int reqMode);
 
 extern int
 ncmpio_buffer_attach(void *ncdp, MPI_Offset bufsize);

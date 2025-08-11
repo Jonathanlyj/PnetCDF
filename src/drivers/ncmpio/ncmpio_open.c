@@ -138,7 +138,9 @@ ncmpio_open(MPI_Comm     comm,
     }
 
     /* read header from file into NC object pointed by ncp -------------------*/
-    err = ncmpio_hdr_get_NC(ncp);
+    // err = ncmpio_hdr_get_NC(ncp);
+    /* META: read global header only from file into NC object pointed by ncp -------------------*/
+    err = ncmpio_global_hdr_get_NC(ncp);
     if (err == NC_ENULLPAD) status = NC_ENULLPAD; /* non-fatal error */
     else if (err != NC_NOERR) { /* fatal error */
         ncmpio_close_files(ncp, 0);
@@ -184,11 +186,15 @@ ncmpio_open(MPI_Comm     comm,
 
 #ifndef SEARCH_NAME_LINEARLY
     /* initialize and populate name lookup tables ---------------------------*/
-    ncmpio_hash_table_populate_NC_dim(&ncp->dims, ncp->dims.hash_size);
-    ncmpio_hash_table_populate_NC_var(&ncp->vars, ncp->vars.hash_size);
+    // ncmpio_hash_table_populate_NC_dim(&ncp->dims, ncp->hash_size_dim);
+    // ncmpio_hash_table_populate_NC_var(&ncp->vars, ncp->hash_size_var);
+    ncmpio_hash_table_populate_NC_block(&ncp->blocks, ncp->hash_size_var);//user var hash size for now
     ncmpio_hash_table_populate_NC_attr(ncp);
-    for (i=0; i<ncp->vars.ndefined; i++)
-        ncp->vars.value[i]->attrs.hash_size = ncp->hash_size_attr;
+    // for (i=0; i<ncp->blocks.ndefined; i++)
+    //     ncp->blocks.value[i]->vars.hash_size = ncp->hash_size_var;
+    //     ncp->blocks.value[i]->dims.hash_size = ncp->hash_size_dim;
+    // for (i=0; i<ncp->vars.ndefined; i++)
+    //     ncp->vars.value[i]->attrs.hash_size = ncp->hash_size_attr;
 #endif
 
     /* determine whether to enable intra-node aggregation and set up all

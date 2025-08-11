@@ -393,6 +393,7 @@ err_check:
 /*----< ncmpio_get_vard() >--------------------------------------------------*/
 int
 ncmpio_get_vard(void         *ncdp,
+                int          blkid,
                 int           varid,
                 MPI_Datatype  filetype,  /* access layout in file */
                 void         *buf,
@@ -408,7 +409,7 @@ ncmpio_get_vard(void         *ncdp,
 
     /* Note sanity check for ncdp and varid has been done in dispatchers */
 
-    return getput_vard(ncp, ncp->vars.value[varid], filetype, buf, bufcount,
+    return getput_vard(ncp, ncp->blocks.value[blkid]->vars.value[varid], filetype, buf, bufcount,
                        buftype, reqMode);
 }
 
@@ -416,6 +417,7 @@ ncmpio_get_vard(void         *ncdp,
 int
 ncmpio_put_vard(void         *ncdp,
                 int           varid,
+                int           blkid,
                 MPI_Datatype  filetype, /* access layout in the file */
                 const void   *buf,
                 MPI_Offset    bufcount,
@@ -430,6 +432,6 @@ ncmpio_put_vard(void         *ncdp,
 
     /* Note sanity check for ncdp and varid has been done in dispatchers */
 
-    return getput_vard(ncp, ncp->vars.value[varid], filetype, (void*)buf,
+    return getput_vard(ncp, ncp->blocks.value[blkid]->vars.value[varid], filetype, (void*)buf,
                        bufcount, buftype, reqMode);
 }

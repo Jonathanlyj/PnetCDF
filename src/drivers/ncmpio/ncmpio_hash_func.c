@@ -346,6 +346,31 @@ ncmpio_hash_table_populate_NC_dim(NC_dimarray *dimsp, int hash_size)
     }
 }
 
+
+/*META ----< ncmpio_hash_table_populate_NC_block() >--------------------------------*/
+void
+ncmpio_hash_table_populate_NC_block(NC_blockarray *blocksp, int hash_size)
+{
+    int i;
+    NC_nametable *nameT = blocksp->nameT;
+
+    /* initialize block name lookup table -------------------------------------*/
+    if (nameT == NULL && blocksp->ndefined > 0)
+        blocksp->nameT = NCI_Calloc(hash_size, sizeof(NC_nametable));
+
+    /* populate name lookup table */
+    for (i=0; i<blocksp->ndefined; i++) {
+        /* hash the block name into a key for name lookup */
+        int key = HASH_FUNC(blocksp->value[i]->name, hash_size);
+        nameT = &blocksp->nameT[key];
+        if (nameT->num % PNC_HLIST_GROWBY == 0)
+            nameT->list = (int*) NCI_Realloc(nameT->list, sizeof(int) *
+                                 (nameT->num + PNC_HLIST_GROWBY));
+        nameT->list[nameT->num] = i;
+        nameT->num++;
+    }
+}
+
 /*----< ncmpio_hash_table_populate_NC_var() >--------------------------------*/
 void
 ncmpio_hash_table_populate_NC_var(NC_vararray *varsp, int hash_size)

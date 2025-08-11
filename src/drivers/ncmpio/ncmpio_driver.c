@@ -36,6 +36,12 @@ static PNC_driver ncmpio_driver = {
     ncmpio_inq_dim,
     ncmpio_rename_dim,
 
+     /* BLOCK APIs */
+    ncmpio_def_block,
+    ncmpio_inq_blkid,
+    ncmpio_inq_block,
+    ncmpio_open_block,
+
     /* ATTRIBUTE APIs */
     ncmpio_inq_att,
     ncmpio_inq_attid,

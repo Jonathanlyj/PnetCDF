@@ -30,7 +30,7 @@ static const char ncmagic2[] = {'C', 'D', 'F', 0x02};
 static const char ncmagic5[] = {'C', 'D', 'F', 0x05};
 
 /*----< hdr_put_NC_name() >--------------------------------------------------*/
-static int
+int
 hdr_put_NC_name(bufferinfo *pbp,
                 const char *name)
 {
@@ -431,6 +431,206 @@ hdr_put_NC_vararray(bufferinfo        *pbp,
             if (status != NC_NOERR) return status;
         }
     }
+
+    return NC_NOERR;
+}
+
+/*META----< hdr_put_NC_dimarray() >----------------------------------------------*/
+static int
+hdr_put_NC_blockarray(bufferinfo        *pbp,
+                    const NC *ncp)
+{
+    /* netCDF file format:
+     *  ...
+     * block_offset list     = ABSENT | NC_BLOCK nelems [block_info ...]
+     * block_info            = name OFFSET bsize
+     * ABSENT       = ZERO  ZERO |  // list is not present for CDF-1 and 2
+     *                ZERO  ZERO64  // for CDF-5
+     * ZERO         = \x00 \x00 \x00 \x00                      // 32-bit zero
+     * ZERO64       = \x00 \x00 \x00 \x00 \x00 \x00 \x00 \x00  // 64-bit zero
+     * NC_DIMENSION = \x00 \x00 \x00 \x0A         // tag for list of dimensions
+     * nelems       = NON_NEG       // number of elements in following sequence
+     * NON_NEG      = <non-negative INT> |        // CDF-1 and CDF-2
+     *                <non-negative INT64>        // CDF-5
+     */
+    int i, status;
+
+    assert(pbp != NULL);
+
+    if (ncp == NULL || ncp->blocks.ndefined == 0) { /* ABSENT */
+        status = ncmpix_put_uint32((void**)(&pbp->pos), NC_UNSPECIFIED);
+        if (status != NC_NOERR) return status;
+
+        /* put a ZERO or ZERO64 depending on which CDF format */
+        if (pbp->version < 5)
+            status = ncmpix_put_uint32((void**)(&pbp->pos), 0);
+        else
+            status = ncmpix_put_uint64((void**)(&pbp->pos), 0);
+        if (status != NC_NOERR) return status;
+    }
+    else {
+        /* copy NC_BLOCK */
+        status = ncmpix_put_uint32((void**)(&pbp->pos), NC_BLOCK);
+        if (status != NC_NOERR) return status;
+
+        /* copy nelems */
+        if (pbp->version < 5)
+            status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncp->blocks.ndefined);
+        else
+            status = ncmpix_put_uint64((void**)(&pbp->pos), (uint64)ncp->blocks.ndefined);
+        if (status != NC_NOERR) return status;
+
+        /* copy name OFFSET block_size*/
+    /* copy [dimid ...] */
+
+    for (int i=0; i<ncp->blocks.ndefined; i++) {
+        // copy block name
+        status = hdr_put_NC_name(pbp, ncp->blocks.value[i]->name);
+        // copy block offset
+        if (pbp->version < 5)
+
+            status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncp->blocks.value[i]->begin);
+        else
+            status = ncmpix_put_uint64((void**)(&pbp->pos), (uint64)ncp->blocks.value[i]->begin);
+        //copy block size
+        if (pbp->version < 5)
+            status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncp->blocks.value[i]->xsz);
+        else
+            status = ncmpix_put_uint64((void**)(&pbp->pos), (uint64)ncp->blocks.value[i]->xsz);
+
+        //copy block var_len
+        if (pbp->version < 5)
+            status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncp->blocks.value[i]->block_var_len);
+        else
+            status = ncmpix_put_uint64((void**)(&pbp->pos), (uint64)ncp->blocks.value[i]->block_var_len);
+
+        if (pbp->version < 5)
+            status = ncmpix_put_uint32((void**)(&pbp->pos), (uint)ncp->blocks.value[i]->block_recvar_len);
+        else
+            status = ncmpix_put_uint64((void**)(&pbp->pos), (uint64)ncp->blocks.value[i]->block_recvar_len);
+        if (status != NC_NOERR) return status;
+        }
+
+    }
+
+    return NC_NOERR;
+}
+
+
+
+//META*----< ncmpio_global_hdr_put_NC() >------------------------------------------------*/
+/* fill the file header into the I/O buffer, buf
+ * this function is collective */
+int
+ncmpio_global_hdr_put_NC(NC *ncp, void *buf)
+{
+    int status;
+    bufferinfo putbuf;
+    MPI_Offset nrecs=0;
+
+    putbuf.comm          = ncp->comm;
+    putbuf.collective_fh = ncp->collective_fh;
+    putbuf.offset        = 0;
+    putbuf.pos           = buf;
+    putbuf.base          = buf;
+    putbuf.safe_mode     = ncp->safe_mode;
+    putbuf.rw_mode       = (fIsSet(ncp->flags, NC_HCOLL)) ? 1 : 0;
+
+    /* netCDF file format:
+     * netcdf_file  = header  data
+     * header       = global_header local_header
+     * global_header= magic numrecs gatt_list block_offset_list
+     */
+    
+    /* copy "magic", 4 characters */
+    if (ncp->format == 5) {
+        putbuf.version = 5;
+
+        status = ncmpix_putn_text((void **)(&putbuf.pos), sizeof(ncmagic5), ncmagic5);
+    }
+    else if (ncp->format == 2) {
+        putbuf.version = 2;
+
+        status = ncmpix_putn_text((void **)(&putbuf.pos), sizeof(ncmagic2), ncmagic2);
+    }
+    else {
+        putbuf.version = 1;
+
+        status = ncmpix_putn_text((void **)(&putbuf.pos), sizeof(ncmagic1), ncmagic1);
+    }
+    if (status != NC_NOERR) return status;
+
+    /* copy numrecs, number of records */
+    nrecs = ncp->numrecs;
+    if (ncp->format < 5) {
+        if (nrecs  > NC_MAX_INT)
+            DEBUG_RETURN_ERROR(NC_EINTOVERFLOW)
+        status = ncmpix_put_uint32((void**)(&putbuf.pos), (uint)nrecs);
+    }
+    else {
+        status = ncmpix_put_uint64((void**)(&putbuf.pos), (uint64)nrecs);
+    }
+    if (status != NC_NOERR) return status;
+
+    // /* copy dim_list */
+    // status = hdr_put_NC_dimarray(&putbuf, &ncp->dims);
+    // if (status != NC_NOERR) return status;
+
+    /* copy gatt_list */
+    status = hdr_put_NC_attrarray(&putbuf, &ncp->attrs);
+    if (status != NC_NOERR) return status;
+
+    // /* copy var_list */
+    // status = hdr_put_NC_vararray(&putbuf, &ncp->vars);
+    // if (status != NC_NOERR) return status;
+
+    /* copy  block_offset_list */
+    status = hdr_put_NC_blockarray(&putbuf, ncp);
+    if (status != NC_NOERR) return status;
+
+    return NC_NOERR;
+}
+/*----< ncmpio_local_hdr_put_NC() >------------------------------------------------*/
+/* fill the file header into the I/O buffer, buf
+ * this function is collective */
+int
+ncmpio_local_hdr_put_NC(NC *ncp, void *buf, int block_index)
+{
+    int status;
+    bufferinfo putbuf;
+    MPI_Offset nrecs=0;
+
+    putbuf.comm          = ncp->comm;
+    putbuf.collective_fh = ncp->collective_fh;
+    putbuf.offset        = 0;
+    putbuf.pos           = buf;
+    putbuf.base          = buf;
+    putbuf.safe_mode     = ncp->safe_mode;
+    putbuf.rw_mode       = (fIsSet(ncp->flags, NC_HCOLL)) ? 1 : 0;
+
+    /* netCDF file format:
+     * netcdf_file  = header  data
+     * header       = global_header local_header
+     * local_header = [header_block ...]
+     * header_block = dim_list var_list
+     */
+    if (ncp->format == 5) {
+        putbuf.version = 5;
+    }
+    else if (ncp->format == 2) {
+        putbuf.version = 2;
+    }
+    else {
+        putbuf.version = 1;
+    }
+
+    /* copy dim_list */
+    status = hdr_put_NC_dimarray(&putbuf, &ncp->blocks.value[block_index]->dims);
+    if (status != NC_NOERR) return status;
+
+    /* copy var_list */
+    status = hdr_put_NC_vararray(&putbuf, &ncp->blocks.value[block_index]->vars);
+    if (status != NC_NOERR) return status;
 
     return NC_NOERR;
 }

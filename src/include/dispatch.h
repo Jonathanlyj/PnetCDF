@@ -56,17 +56,25 @@ struct PNC_driver {
     int (*flush)(void*);
     int (*abort)(void*);
     int (*set_fill)(void*,int,int*);
-    int (*inq)(void*,int*,int*,int*,int*);
+    int (*inq)(void*,int*,int*);
+    // int (*inq)(void*,int*,int*,int*,int*);
     int (*inq_misc)(void*,int*,char*,int*,int*,int*,int*,MPI_Offset*,MPI_Offset*,MPI_Offset*,MPI_Offset*,MPI_Offset*,MPI_Info*,int*,MPI_Offset*,MPI_Offset*);
     int (*sync_numrecs)(void*);
     int (*begin_indep_data)(void*);
     int (*end_indep_data)(void*);
 
     /* APIs manipulate dimensions */
-    int (*def_dim)(void*,const char*,MPI_Offset,int*);
-    int (*inq_dimid)(void*,const char*,int*);
-    int (*inq_dim)(void*,int,char*,MPI_Offset*);
-    int (*rename_dim)(void*, int, const char*);
+    int (*def_dim)(void*,int,const char*,MPI_Offset,int*);
+    int (*inq_dimid)(void*,int,const char*,int*);
+    int (*inq_dim)(void*,int,int,char*,MPI_Offset*);
+    int (*rename_dim)(void*,int,int,const char*);
+
+    /*META APIs manipulate blocks */
+    int (*def_block)(void*,const char*,int*);
+    int (*inq_blkid)(void*,const char*,int*);
+    int (*inq_block)(void*, int, char*, int*, int*, int*);
+    int (*open_block)(void*, int);
+
 
     /* APIs read/write attributes */
     int (*inq_att)(void*,int,const char*,nc_type*,MPI_Offset*);
@@ -79,29 +87,29 @@ struct PNC_driver {
     int (*put_att)(void*,int,const char*,nc_type,MPI_Offset,const void*,MPI_Datatype);
 
     /* APIs read/write variables */
-    int (*def_var)(void*,const char*,nc_type,int,const int*,int*);
-    int (*def_var_fill)(void*,int,int,const void*);
-    int (*fill_var_rec)(void*,int,MPI_Offset);
-    int (*inq_var)(void*,int,char*,nc_type*,int*,int*,int*,MPI_Offset*,int*,void*);
-    int (*inq_varid)(void*,const char*,int*);
-    int (*rename_var)(void*,int,const char*);
+    int (*def_var)(void*,int,const char*,nc_type,int,const int*,int*);
+    int (*def_var_fill)(void*,int,int,int,const void*);
+    int (*fill_var_rec)(void*,int,int,MPI_Offset);
+    int (*inq_var)(void*,int,int,char*,nc_type*,int*,int*,int*,MPI_Offset*,int*,void*);
+    int (*inq_varid)(void*,const char*,int,int*);
+    int (*rename_var)(void*,int,int,const char*);
+    //META: all put_var function add blkid as an argument
+    int (*get_var)(void*,int,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,void*,MPI_Offset,MPI_Datatype,int);
+    int (*put_var)(void*,int,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const void*,MPI_Offset,MPI_Datatype,int);
 
-    int (*get_var)(void*,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,void*,MPI_Offset,MPI_Datatype,int);
-    int (*put_var)(void*,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const void*,MPI_Offset,MPI_Datatype,int);
+    int (*get_varn)(void*,int,int,int,MPI_Offset* const*,MPI_Offset* const*,void*,MPI_Offset,MPI_Datatype,int);
+    int (*put_varn)(void*,int,int,int,MPI_Offset* const*,MPI_Offset* const*,const void*,MPI_Offset,MPI_Datatype,int);
 
-    int (*get_varn)(void*,int,int,MPI_Offset* const*,MPI_Offset* const*,void*,MPI_Offset,MPI_Datatype,int);
-    int (*put_varn)(void*,int,int,MPI_Offset* const*,MPI_Offset* const*,const void*,MPI_Offset,MPI_Datatype,int);
+    int (*get_vard)(void*,int,int,MPI_Datatype,void*,MPI_Offset,MPI_Datatype,int);
+    int (*put_vard)(void*,int,int,MPI_Datatype,const void*,MPI_Offset,MPI_Datatype,int);
 
-    int (*get_vard)(void*,int,MPI_Datatype,void*,MPI_Offset,MPI_Datatype,int);
-    int (*put_vard)(void*,int,MPI_Datatype,const void*,MPI_Offset,MPI_Datatype,int);
+    int (*iget_var)(void*,int,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,void*,MPI_Offset,MPI_Datatype,int*,int);
+    int (*iput_var)(void*,int,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const void*,MPI_Offset,MPI_Datatype,int*,int);
+    int (*bput_var)(void*,int,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const void*,MPI_Offset,MPI_Datatype,int*,int);
 
-    int (*iget_var)(void*,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,void*,MPI_Offset,MPI_Datatype,int*,int);
-    int (*iput_var)(void*,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const void*,MPI_Offset,MPI_Datatype,int*,int);
-    int (*bput_var)(void*,int,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const MPI_Offset*,const void*,MPI_Offset,MPI_Datatype,int*,int);
-
-    int (*iget_varn)(void*,int,int,MPI_Offset* const*,MPI_Offset* const*,void*,MPI_Offset,MPI_Datatype,int*,int);
-    int (*iput_varn)(void*,int,int,MPI_Offset* const*,MPI_Offset* const*,const void*,MPI_Offset,MPI_Datatype,int*,int);
-    int (*bput_varn)(void*,int,int,MPI_Offset* const*,MPI_Offset* const*,const void*,MPI_Offset,MPI_Datatype,int*,int);
+    int (*iget_varn)(void*,int,int,int,MPI_Offset* const*,MPI_Offset* const*,void*,MPI_Offset,MPI_Datatype,int*,int);
+    int (*iput_varn)(void*,int,int,int,MPI_Offset* const*,MPI_Offset* const*,const void*,MPI_Offset,MPI_Datatype,int*,int);
+    int (*bput_varn)(void*,int,int,int,MPI_Offset* const*,MPI_Offset* const*,const void*,MPI_Offset,MPI_Datatype,int*,int);
 
     int (*buffer_attach)(void*,MPI_Offset);
     int (*buffer_detach)(void*);
@@ -112,6 +120,7 @@ struct PNC_driver {
 typedef struct PNC_driver PNC_driver;
 
 #define PNC_VARS_CHUNK 64
+#define PNC_BLOCKS_CHUNK 64
 
 struct PNC_var {
     int         ndims;
@@ -120,6 +129,16 @@ struct PNC_var {
     MPI_Offset *shape;    /* [ndims] */
 };
 typedef struct PNC_var PNC_var;
+
+
+struct PNC_block {
+    int         ndims;
+    int         nvars;       /* number of variables defined */
+    struct PNC_var    *vars;        /* array of variable objects */
+    int                unlimdimid;  /* dim ID of NC_UNLIMITED */
+    int                nrec_vars;   /* number of record variables */
+};
+typedef struct PNC_block PNC_block;
 
 /* one dispatcher object per file: containing info independent from drivers,
  * and can be used for sanity checks, operations need not involve drivers
@@ -132,9 +151,11 @@ struct PNC {
     MPI_Comm           comm;        /* MPI communicator */
     int                ndims;       /* number of dimensions defined */
     int                unlimdimid;  /* dim ID of NC_UNLIMITED */
-    int                nvars;       /* number of variables */
+    int                nvars;       /* number of variables defined */
+    int                nblocks;       /* number of blocks */
     int                nrec_vars;   /* number of record variables */
     struct PNC_var    *vars;        /* array of variable objects */
+    struct PNC_block  *blocks;      /* array of block objects */
     void              *ncp;         /* pointer to driver internal object */
     struct PNC_driver *driver;
 };

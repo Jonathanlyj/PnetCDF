@@ -32,15 +32,42 @@
 #include "ncmpio_subfile.h"
 #endif
 
+// /*----< ncmpio_free_NC() >----------------------------------------------------*/
+// void
+// ncmpio_free_NC(NC *ncp)
+// {
+//     if (ncp == NULL) return;
+
+//     ncmpio_free_NC_dimarray(&ncp->dims);
+//     ncmpio_free_NC_attrarray(&ncp->attrs);
+//     ncmpio_free_NC_vararray(&ncp->vars);
+
+//     /* The only case that ncp->mpiinfo is MPI_INFO_NULL is when exiting endef
+//      * from a redef. All other cases reaching here are from ncmpi_close, in
+//      * which case ncp->mpiinfo is never MPI_INFO_NULL.
+//      */
+//     if (ncp->mpiinfo != MPI_INFO_NULL) MPI_Info_free(&ncp->mpiinfo);
+
+//     if (ncp->get_list != NULL) NCI_Free(ncp->get_list);
+//     if (ncp->put_list != NULL) NCI_Free(ncp->put_list);
+//     if (ncp->abuf     != NULL) NCI_Free(ncp->abuf);
+//     if (ncp->path     != NULL) NCI_Free(ncp->path);
+//     if (ncp->block_begins     != NULL) NCI_Free(ncp->block_begins);
+
+//     NCI_Free(ncp);
+// }
+
 /*----< ncmpio_free_NC() >----------------------------------------------------*/
 void
 ncmpio_free_NC(NC *ncp)
 {
     if (ncp == NULL) return;
 
-    ncmpio_free_NC_dimarray(&ncp->dims);
+    // ncmpio_free_NC_dimarray(&ncp->dims);
     ncmpio_free_NC_attrarray(&ncp->attrs);
-    ncmpio_free_NC_vararray(&ncp->vars);
+    
+    ncmpio_free_NC_blockarray(&ncp->blocks);
+    // ncmpio_free_NC_vararray(&ncp->vars);
 
     /* The only case that ncp->mpiinfo is MPI_INFO_NULL is when exiting endef
      * from a redef. All other cases reaching here are from ncmpi_close, in
@@ -48,11 +75,14 @@ ncmpio_free_NC(NC *ncp)
      */
     if (ncp->mpiinfo != MPI_INFO_NULL) MPI_Info_free(&ncp->mpiinfo);
 
-    if (ncp->get_list      != NULL) NCI_Free(ncp->get_list);
-    if (ncp->put_list      != NULL) NCI_Free(ncp->put_list);
-    if (ncp->abuf          != NULL) NCI_Free(ncp->abuf);
-    if (ncp->path          != NULL) NCI_Free(ncp->path);
+    if (ncp->get_list != NULL) NCI_Free(ncp->get_list);
+    if (ncp->put_list != NULL) NCI_Free(ncp->put_list);
+    if (ncp->abuf     != NULL) NCI_Free(ncp->abuf);
+    if (ncp->path     != NULL) NCI_Free(ncp->path);
     if (ncp->nonaggr_ranks != NULL) NCI_Free(ncp->nonaggr_ranks);
+    // if (ncp->block_begins     != NULL) NCI_Free(ncp->block_begins);
+    ncp->hash_size_var = 0;
+    ncp->hash_size_dim = 0;
 
     NCI_Free(ncp);
 }
@@ -97,6 +127,7 @@ ncmpio_close(void *ncdp)
 {
     int err=NC_NOERR, status=NC_NOERR;
     NC *ncp = (NC*)ncdp;
+
 
     if (NC_indef(ncp)) { /* currently in define mode */
         status = ncmpio__enddef(ncp, 0, 0, 0, 0); /* TODO: defaults */
@@ -162,69 +193,67 @@ ncmpio_close(void *ncdp)
     err = ncmpio_close_files(ncp, 0);
     if (status == NC_NOERR) status = err;
 
-    /* file is open for write and no variable has been defined */
-    if (!NC_readonly(ncp) && ncp->vars.ndefined == 0) {
-        /* wait until all processes close the file */
-        if (ncp->nprocs > 1) MPI_Barrier(ncp->comm);
+//     /* file is open for write and no variable has been defined */
+//     if (!NC_readonly(ncp) && ncp->vars.ndefined == 0) {
+//         int rank;
 
-        if (ncp->rank == 0) {
-            /* ignore all errors, as unexpected file size if not a fatal error */
-#ifdef HAVE_TRUNCATE
-            /* when calling POSIX I/O, remove file type prefix from file name */
-            char *path = ncmpii_remove_file_system_type_prefix(ncp->path);
-            int fd = open(path, O_RDWR, 0666);
-            if (fd != -1) {
-                /* obtain file size */
-                off_t file_size = lseek(fd, 0, SEEK_END);
-                /* truncate file size to header size, if larger than header */
-                if (file_size > ncp->xsz && ftruncate(fd, ncp->xsz) < 0) {
-                    err = ncmpii_error_posix2nc("ftruncate");
-                    if (status == NC_NOERR) status = err;
-                }
-                close(fd);
-            }
-#else
-            MPI_File fh;
-            int mpireturn;
-            mpireturn = MPI_File_open(MPI_COMM_SELF, ncp->path, MPI_MODE_RDWR, MPI_INFO_NULL, &fh);
-            if (mpireturn == MPI_SUCCESS) {
-                /* obtain file size */
-                MPI_Offset *file_size;
-                mpireturn = MPI_File_seek(fh, 0, MPI_SEEK_END);
-                if (mpireturn != MPI_SUCCESS) {
-                    err = ncmpii_error_mpi2nc(mpireturn,"MPI_File_seek");
-                    if (status == NC_NOERR) status = err;
-                }
-                mpireturn = MPI_File_get_position(fh, &file_size);
-                if (mpireturn != MPI_SUCCESS) {
-                    err = ncmpii_error_mpi2nc(mpireturn,"MPI_File_get_position");
-                    if (status == NC_NOERR) status = err;
-                }
-                /* truncate file size to header size, if larger than header */
-                if (file_size > ncp->xsz) {
-                    mpireturn = MPI_File_set_size(fh, ncp->xsz);
-                    if (mpireturn != MPI_SUCCESS) {
-                        err = ncmpii_error_mpi2nc(mpireturn,"MPI_File_set_size");
-                        if (status == NC_NOERR) status = err;
-                    }
-                }
-                mpireturn = MPI_File_close(&fh);
-                if (mpireturn != MPI_SUCCESS) {
-                    err = ncmpii_error_mpi2nc(mpireturn,"MPI_File_close");
-                    if (status == NC_NOERR) status = err;
-                }
-            }
-            else {
-                err = ncmpii_error_mpi2nc(mpireturn,"MPI_File_open");
-                if (status == NC_NOERR) status = err;
-            }
-#endif
-        }
-        if (ncp->nprocs > 1) MPI_Barrier(ncp->comm);
-    }
+//         /* wait until all processes close the file */
+//         MPI_Barrier(ncp->comm);
+
+//         MPI_Comm_rank(ncp->comm, &rank);
+//         if (rank == 0) {
+//             /* ignore all errors, as unexpected file size if not a fatal error */
+// #ifdef HAVE_TRUNCATE
+//             /* when calling POSIX I/O, remove file type prefix from file name */
+//             char *path = ncmpii_remove_file_system_type_prefix(ncp->path);
+//             int fd = open(path, O_RDWR, 0666);
+//             if (fd != -1) {
+//                 /* obtain file size */
+//                 off_t file_size = lseek(fd, 0, SEEK_END);
+//                 /* truncate file size to header size, if larger than header */
+//                 if (file_size > ncp->xsz && ftruncate(fd, ncp->xsz) < 0) {
+//                     err = ncmpii_error_posix2nc("ftruncate");
+//                     if (status == NC_NOERR) status = err;
+//                 }
+//                 close(fd);
+//             }
+// #else
+//             MPI_File fh;
+//             int mpireturn;
+//             mpireturn = MPI_File_open(MPI_COMM_SELF, ncp->path, MPI_MODE_RDWR, MPI_INFO_NULL, &fh);
+//             if (mpireturn == MPI_SUCCESS) {
+//                 /* obtain file size */
+//                 MPI_Offset *file_size;
+//                 MPI_File_seek(fh, 0, MPI_SEEK_END);
+//                 MPI_File_get_position(fh, &file_size);
+//                 /* truncate file size to header size, if larger than header */
+//                 if (file_size > ncp->xsz} {
+//                     mpireturn = MPI_File_set_size(fh, ncp->xsz);
+//                     if (mpireturn != MPI_SUCCESS) {
+//                         err = ncmpii_error_mpi2nc(mpireturn,"MPI_File_set_size");
+//                         if (status == NC_NOERR) status = err;
+//                     }
+//                 }
+//                 MPI_File_close(&fh);
+//             }
+//             else {
+//                 err = ncmpii_error_mpi2nc(mpireturn,"MPI_File_open");
+//                 if (status == NC_NOERR) status = err;
+//             }
+// #endif
+//         }
+//         MPI_Barrier(ncp->comm);
+//     }
 
     /* free up space occupied by the header metadata */
+    int myrank;
+    MPI_Comm_rank(ncp->comm, &myrank);
+    double start_timer = MPI_Wtime();
     ncmpio_free_NC(ncp);
+    double free_time = MPI_Wtime() - start_timer;
+    if (myrank == 0) {
+        printf("Free ncp time: %f\n", free_time);
+    }
 
     return status;
 }
