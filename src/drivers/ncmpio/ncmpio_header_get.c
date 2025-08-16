@@ -1571,7 +1571,7 @@ ncmpio_block_hdr_len_NC(const NC *ncp, int block_index)
      */
 
     int sizeof_NON_NEG, sizeof_off_t;
-    MPI_Offset xlen;
+    MPI_Offset xlen = 0;
 
     assert(ncp != NULL);
 

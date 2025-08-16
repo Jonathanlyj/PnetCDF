@@ -348,6 +348,7 @@ ncmpi_inq_var(int      ncid,    /* IN:  file ID */
 /* This is an independent subroutine */
 int
 ncmpi_inq_varname(int   ncid,    /* IN:  file ID */
+                  int   blkid,
                   int   varid,   /* IN:  variable ID */
                   char *name)    /* OUT: name of variable */
 {
@@ -368,7 +369,7 @@ ncmpi_inq_varname(int   ncid,    /* IN:  file ID */
 
     /* calling the subroutine that implements ncmpi_inq_varname() */
     //META: TODO: fix blkid here by adding blkid input argument to the function 
-    return pncp->driver->inq_var(pncp->ncp, NULL, varid, name, NULL, NULL,
+    return pncp->driver->inq_var(pncp->ncp, blkid, varid, name, NULL, NULL,
                                  NULL, NULL, NULL, NULL, NULL);
 }
 
@@ -376,6 +377,7 @@ ncmpi_inq_varname(int   ncid,    /* IN:  file ID */
 /* This is an independent subroutine */
 int
 ncmpi_inq_vartype(int      ncid,    /* IN:  file ID */
+                  int   blkid,
                   int      varid,   /* IN:  variable ID */
                   nc_type *xtypep)  /* OUT: external type of variable */
 {
@@ -399,7 +401,7 @@ ncmpi_inq_vartype(int      ncid,    /* IN:  file ID */
 
 #if 0
     /* calling the subroutine that implements ncmpi_inq_vartype() */
-    return pncp->driver->inq_var(pncp->ncp, NULL, varid, NULL, xtypep, NULL,
+    return pncp->driver->inq_var(pncp->ncp, blkid, varid, NULL, xtypep, NULL,
                                  NULL, NULL, NULL, NULL, NULL);
 #endif
 }
@@ -408,6 +410,7 @@ ncmpi_inq_vartype(int      ncid,    /* IN:  file ID */
 /* This is an independent subroutine */
 int
 ncmpi_inq_varndims(int  ncid,    /* IN:  file ID */
+                  int   blkid,
                    int  varid,   /* IN:  variable ID */
                    int *ndimsp)  /* OUT: number of dimensions of variable */
 {
@@ -431,7 +434,7 @@ ncmpi_inq_varndims(int  ncid,    /* IN:  file ID */
 
 #if 0
     /* calling the subroutine that implements ncmpi_inq_varndims() */
-    return pncp->driver->inq_var(pncp->ncp, NULL, varid, NULL, NULL, ndimsp,
+    return pncp->driver->inq_var(pncp->ncp, blkid, varid, NULL, NULL, ndimsp,
                                  NULL, NULL, NULL, NULL, NULL);
 #endif
 }
@@ -440,6 +443,7 @@ ncmpi_inq_varndims(int  ncid,    /* IN:  file ID */
 /* This is an independent subroutine */
 int
 ncmpi_inq_vardimid(int  ncid,    /* IN:  file ID */
+                  int   blkid,
                    int  varid,   /* IN:  variable ID */
                    int *dimids)  /* OUT: dimension IDs of variable */
 {
@@ -459,7 +463,7 @@ ncmpi_inq_vardimid(int  ncid,    /* IN:  file ID */
     if (varid < 0 || varid >= pncp->nvars) DEBUG_RETURN_ERROR(NC_ENOTVAR)
 
     /* calling the subroutine that implements ncmpi_inq_vardimid() */
-    return pncp->driver->inq_var(pncp->ncp, NULL, varid, NULL, NULL, NULL,
+    return pncp->driver->inq_var(pncp->ncp, blkid, varid, NULL, NULL, NULL,
                                  dimids, NULL, NULL, NULL, NULL);
 }
 
@@ -467,6 +471,7 @@ ncmpi_inq_vardimid(int  ncid,    /* IN:  file ID */
 /* This is an independent subroutine */
 int
 ncmpi_inq_varnatts(int  ncid,    /* IN:  file ID */
+                  int   blkid,
                    int  varid,   /* IN:  variable ID */
                    int *nattsp)  /* OUT: number of attributes of variable */
 {
@@ -482,7 +487,7 @@ ncmpi_inq_varnatts(int  ncid,    /* IN:  file ID */
          DEBUG_RETURN_ERROR(NC_ENOTVAR)
 
     /* calling the subroutine that implements ncmpi_inq_varnatts() */
-    return pncp->driver->inq_var(pncp->ncp, NULL, varid, NULL, NULL, NULL,
+    return pncp->driver->inq_var(pncp->ncp, blkid, varid, NULL, NULL, NULL,
                                  NULL, nattsp, NULL, NULL, NULL);
 }
 
@@ -490,6 +495,7 @@ ncmpi_inq_varnatts(int  ncid,    /* IN:  file ID */
 /* This is an independent subroutine */
 int
 ncmpi_inq_varoffset(int         ncid,   /* IN: file ID */
+                  int   blkid,
                     int         varid,  /* IN: variable ID */
                     MPI_Offset *offset) /* OUT: starting file offset */
 {
@@ -509,7 +515,7 @@ ncmpi_inq_varoffset(int         ncid,   /* IN: file ID */
     if (varid < 0 || varid >= pncp->nvars) DEBUG_RETURN_ERROR(NC_ENOTVAR)
 
     /* calling the subroutine that implements ncmpi_inq_varoffset() */
-    return pncp->driver->inq_var(pncp->ncp, NULL, varid, NULL, NULL, NULL,
+    return pncp->driver->inq_var(pncp->ncp, blkid, varid, NULL, NULL, NULL,
                                  NULL, NULL, offset, NULL, NULL);
 }
 
@@ -517,6 +523,7 @@ ncmpi_inq_varoffset(int         ncid,   /* IN: file ID */
 /* this API can be called independently and in both data and define mode */
 int
 ncmpi_inq_var_fill(int   ncid,
+                  int   blkid,
                    int   varid,
                    int  *no_fill,    /* OUT: 1 not fill mode, 0 fill mode */
                    void *fill_value) /* OUT: user-defined or default fill value */
@@ -537,7 +544,7 @@ ncmpi_inq_var_fill(int   ncid,
     if (varid < 0 || varid >= pncp->nvars) DEBUG_RETURN_ERROR(NC_ENOTVAR)
 
     /* calling the subroutine that implements ncmpi_inq_var_fill() */
-    return pncp->driver->inq_var(pncp->ncp, NULL, varid, NULL, NULL, NULL,
+    return pncp->driver->inq_var(pncp->ncp, blkid, varid, NULL, NULL, NULL,
                                  NULL, NULL, NULL, no_fill, fill_value);
 }
 
