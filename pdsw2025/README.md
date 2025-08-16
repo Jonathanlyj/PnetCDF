@@ -7,6 +7,7 @@ This artifact repository accompanies our study on scalable parallel metadata man
 This project requires the standard HDF5 and PnetCDF libraries, as well as custom variants of PnetCDF developed for this study. The following sections provide detailed instructions for building these I/O libraries.
 
 1. HDF5 1.14.4-2
+    Make sure you have a pre-built MPI complier (MPICH or OpenMPI) for parallel HDF5.
     ```shell
      # download source codes
      wget https://github.com/HDFGroup/hdf5/releases/download/hdf5_1.14.4.2/hdf5-1.14.4-2.tar.gz
@@ -17,7 +18,7 @@ This project requires the standard HDF5 and PnetCDF libraries, as well as custom
      export HDF5_DIR=$HOME/hdf5/HDF5-install
 
      # configure
-     ./configure --prefix=${HDF5_DIR} --enable-parallel --enable-build-mode=production
+     CC=/path/to/your/mpi/bin/mpicc ./configure --prefix=${HDF5_DIR} --enable-parallel --enable-build-mode=production
     
      # compile
      make -j8
@@ -32,13 +33,13 @@ This project requires the standard HDF5 and PnetCDF libraries, as well as custom
     ```shell
      # make sure you are on pdsw_2025 branch
      git checkout pdsw_2025
-     # go to top-level of this git repo
-     cd ..
+     # navigate to the root directory of the repository
+
      # prefix of install dir. One should modify its value.
      export PNETCDF_DIR=$HOME/pnetcdf/pnetcdf-install
      # configure
      autoreconf -i
-     ./configure --prefix=${PNETCDF_DIR} --disable-fortran --disable-cxx CC=cc --enable-shared=no 'CFLAGS=-Wall -O2'
+     ./configure --prefix=${PNETCDF_DIR} --disable-fortran --disable-cxx CC=cc --enable-shared=no CFLAGS="-Wall -O2"
     
      # compile
      make -j8
@@ -53,13 +54,13 @@ This project requires the standard HDF5 and PnetCDF libraries, as well as custom
      git checkout pdsw_2025_lib
 
      # navigate to the root directory of the repository
-     cd ..
+
 
      # prefix of install dir. One should modify this value.
      export PNETCDF_DIR_LIB=$HOME/pnetcdf/pnetcdf-lib-install
      # configure
      autoreconf -i
-     ./configure --prefix=${PNETCDF_DIR_LIB} --disable-fortran --disable-cxx CC=cc --enable-shared=no 'CFLAGS=-Wall -O2'
+     ./configure --prefix=${PNETCDF_DIR_LIB} --disable-fortran --disable-cxx CC=cc --enable-shared=no CFLAGS="-Wall -O2 -Wno-error"
     
      # compile
      make -j8
@@ -78,7 +79,7 @@ This project requires the standard HDF5 and PnetCDF libraries, as well as custom
 
      # configure
      autoreconf -i
-     ./configure --prefix=${PNETCDF_DIR_FORMAT} --disable-fortran --disable-cxx CC=cc --enable-shared=no 'CFLAGS=-Wall -O2'
+     ./configure --prefix=${PNETCDF_DIR_FORMAT} --disable-fortran --disable-cxx CC=cc --enable-shared=no CFLAGS="-Wall -O2 -Wno-error"
     
      # compile
      make -j8
@@ -96,8 +97,9 @@ This project requires the standard HDF5 and PnetCDF libraries, as well as custom
      export PNETCDF_DIR_LIB=$HOME/pnetcdf/pnetcdf-lib-install
      export PNETCDF_DIR_FORMAT=$HOME/pnetcdf/pnetcdf-format-install
      export HDF5_DIR=$HOME/hdf5/hdf5-install
-     # compile and build all test programs
+     # navigate to the root directory of the repository and then cd to pdsw2025 folder
      cd pdsw2025
+     # compile and build all test programs
      make all
     ```
 

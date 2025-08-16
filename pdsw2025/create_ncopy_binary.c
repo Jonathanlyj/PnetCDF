@@ -61,7 +61,7 @@ int build_ncopy_hdr(struct hdr *input_hdr, struct hdr *output_hdr) {
             hdr_var *dst = output_hdr->vars.value[index];
 
             char name[256];
-            snprintf(name, sizeof(name), "copy_%d_%s", n + 1, src->name);
+            snprintf(name, sizeof(name), "%s_copy%d", src->name, n);
             dst->name = strdup(name);
             dst->name_len = strlen(dst->name);
             dst->xtype = src->xtype;

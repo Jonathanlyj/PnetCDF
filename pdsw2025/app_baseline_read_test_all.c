@@ -44,7 +44,7 @@ read_metadata_test(MPI_Comm comm, const char *filename, int cmode)
     err = ncmpi_open(MPI_COMM_WORLD, filename, NC_NOWRITE, MPI_INFO_NULL, &ncid);
     ERR
 
-    char var_name[20];    
+    char var_name[256];    
     int nvars;
     int ndims, v_ndims;
     int* v_dimids;

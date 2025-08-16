@@ -323,7 +323,7 @@ int main(int argc, char *argv[]) {
     MPI_Barrier(MPI_COMM_WORLD);
     
     MPI_Info info = MPI_INFO_NULL;
-    MPI_Info_create(&info);
+    // MPI_Info_create(&info);
     // MPI_Info_set(info, "nc_hash_size_dim", "16777216");
     // MPI_Info_set(info, "nc_hash_size_var", "8388608");
     // MPI_Info_set(info, "nc_hash_size_dim", "16384");

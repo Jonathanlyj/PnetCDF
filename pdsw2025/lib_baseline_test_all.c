@@ -16,7 +16,6 @@
 #include <pnetcdf.h>
 // #include "baseline_ncx_lib.h"
 #include "baseline_ncx_app.h"
-#include <malloc.h>
 #include "mem_tracker.h"
 
 #ifdef MEM_TRACKING

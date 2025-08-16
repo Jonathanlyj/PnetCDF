@@ -124,8 +124,26 @@ int define_hdr_hdf5(struct hdr *hdr_data, hid_t file_id) {
             if (current_group_id >= 0)
                 H5Gclose(current_group_id);
             crt_start_time = MPI_Wtime();
+
             current_group_id = H5Gcreate2(file_id, group_name,
                                           H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            if (current_group_id < 0) {
+                // Try opening the group instead
+                // fprintf(stderr,
+                //         "Notice: Group \"%s\" already existed, opened instead.\n",
+                //         group_name, last_group_name);
+                current_group_id = H5Gopen2(file_id, group_name, H5P_DEFAULT);
+    
+                if (current_group_id < 0) {
+                    // Both create and open failed, report error
+
+                    fprintf(stderr,
+                            "Error: Cannot create or open group \"%s\" (last group \"%s\")\n",
+                            group_name, last_group_name);
+                    H5Eprint2(H5E_DEFAULT, stderr);
+                    exit(EXIT_FAILURE);
+                }
+            }
             crt_time += MPI_Wtime() - crt_start_time;
             strcpy(last_group_name, group_name);
         } else if(i == 0){
@@ -161,6 +179,7 @@ int define_hdr_hdf5(struct hdr *hdr_data, hid_t file_id) {
 
         // Create dataset in current group
         crt_start_time = MPI_Wtime();
+
         hid_t dset_id = H5Dcreate2(current_group_id, dataset_name, h5type, space_id,
                                    H5P_DEFAULT, dcpl_id, H5P_DEFAULT);
         crt_time += MPI_Wtime() - crt_start_time;
@@ -308,6 +327,7 @@ int main(int argc, char *argv[]) {
     int block_size = 4 * 1024 * 1024;
     unsigned ik = 32;
     unsigned lk = 5;
+    H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
     fcpl_id = H5Pcreate(H5P_FILE_CREATE);
     // H5Pset_istore_k(fcpl_id, 1024);
     H5Pset_sym_k(fcpl_id, ik, lk);

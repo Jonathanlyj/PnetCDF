@@ -39,7 +39,7 @@ read_metadata_test(MPI_Comm comm, const char *filename, int cmode)
     double total_read_time = 0;
     double read_start_time = MPI_Wtime();
     /* open the newly created file for read only -----------------------------*/
-    err = ncmpi_open(MPI_COMM_WORLD, filename, NC_NOWRITE, MPI_INFO_NULL, &ncid);
+    err = ncmpi_open(comm, filename, NC_NOWRITE, MPI_INFO_NULL, &ncid);
     ERR
     /*read the number of blocks*/
     int nblocks;
@@ -47,7 +47,7 @@ read_metadata_test(MPI_Comm comm, const char *filename, int cmode)
     // printf("\nThere are this number of blocks: %d\n", nblocks);
 
     /* read the block name & block id*/
-    char blk_name[20], var_name[20];    
+    char var_name[256];
     int nvars;
     int ndims, v_ndims;
     int* v_dimids;
